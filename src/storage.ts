@@ -1,9 +1,10 @@
-import { App, TFile, TFolder, normalizePath } from 'obsidian';
+import { App, normalizePath } from 'obsidian';
 import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings } from './types';
 
 export class StorageManager {
   private app: App;
   private settingsGetter: () => FocusCalendarSettings;
+  public isLocalSaving: boolean = false;
 
   constructor(app: App, settingsGetter: () => FocusCalendarSettings) {
     this.app = app;
@@ -36,7 +37,6 @@ export class StorageManager {
     try {
       const exists = await this.app.vault.adapter.exists(path);
       if (!exists) {
-        // Generate initial synthetic placeholder entries if first time loading this month
         const seedEntries = this.generateSeedEntries(yearMonth);
         await this.saveEntriesForMonth(yearMonth, seedEntries);
         await this.generateSeedPomodoroLogs(yearMonth, seedEntries);
@@ -54,11 +54,14 @@ export class StorageManager {
     await this.ensureDataFolderExists();
     const path = this.getMonthFilePath(yearMonth);
     const data = JSON.stringify(entries, null, 2);
+    
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, data);
+    setTimeout(() => { this.isLocalSaving = false; }, 500);
   }
 
   public async saveEntry(entry: CalendarEntry): Promise<void> {
-    const yearMonth = entry.date.substring(0, 7); // "YYYY-MM"
+    const yearMonth = entry.date.substring(0, 7);
     const currentEntries = await this.loadEntriesForMonth(yearMonth);
     const existingIdx = currentEntries.findIndex(e => e.id === entry.id);
     if (existingIdx >= 0) {
@@ -90,7 +93,10 @@ export class StorageManager {
       logs = [];
     }
     logs.push(session);
+    
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
+    setTimeout(() => { this.isLocalSaving = false; }, 500);
 
     if (session.taskId && session.type === 'work') {
       const entries = await this.loadEntriesForMonth(yearMonth);
@@ -239,6 +245,8 @@ export class StorageManager {
       }
     ];
 
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
+    setTimeout(() => { this.isLocalSaving = false; }, 500);
   }
 }

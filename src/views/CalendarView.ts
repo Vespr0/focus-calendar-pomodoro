@@ -14,7 +14,6 @@ export class FocusCalendarView extends ItemView {
 
   private viewMode: ViewMode = 'week';
   private currentDate: Date = new Date();
-  private activeEditingEntryId: string | null = null;
 
   private headerComponent: PomodoroHeaderComponent | null = null;
   private weekComponent: WeekViewRenderComponent | null = null;
@@ -53,10 +52,6 @@ export class FocusCalendarView extends ItemView {
   }
 
   public renderView(): void {
-    if (this.weekComponent) {
-      this.activeEditingEntryId = this.weekComponent.getEditingEntryId();
-    }
-
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass('fcp-main-container');
@@ -153,22 +148,21 @@ export class FocusCalendarView extends ItemView {
               createdAt: Date.now(),
               updatedAt: Date.now()
             };
+            this.entries.push(newEntry);
             await this.storage.saveEntry(newEntry);
-            await this.refreshData();
             return newEntry;
           },
           onEntryUpdate: async (entry) => {
             entry.updatedAt = Date.now();
             await this.storage.saveEntry(entry);
-            await this.refreshData();
             this.updateHeaderStats();
           },
           onEntryDelete: async (entry) => {
             await this.storage.deleteEntry(entry.id, entry.date);
+            this.entries = this.entries.filter(e => e.id !== entry.id);
             if (this.pomodoro.getFocusedTask()?.id === entry.id) {
               this.pomodoro.setFocusedTask(null);
             }
-            await this.refreshData();
             this.updateHeaderStats();
           },
           onTaskFocus: (entry) => {
@@ -176,8 +170,7 @@ export class FocusCalendarView extends ItemView {
             new Notice(`Focused on task: ${entry.title || 'Untitled'}`);
           },
           getFocusedTaskId: () => this.pomodoro.getFocusedTask()?.id
-        },
-        this.activeEditingEntryId
+        }
       );
     } else {
       this.monthComponent = new MonthViewRenderComponent(

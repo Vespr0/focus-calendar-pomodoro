@@ -14,7 +14,6 @@ export class WeekViewRenderComponent {
   private weekStart: Date;
   private entries: CalendarEntry[];
   private callbacks: WeekViewCallbacks;
-  private editingEntryId: string | null = null;
 
   // Constants
   private readonly startHour = 5; // 05:00
@@ -26,32 +25,18 @@ export class WeekViewRenderComponent {
     containerEl: HTMLElement,
     weekStart: Date,
     entries: CalendarEntry[],
-    callbacks: WeekViewCallbacks,
-    initialEditingEntryId: string | null = null
+    callbacks: WeekViewCallbacks
   ) {
     this.containerEl = containerEl;
     this.weekStart = weekStart;
     this.entries = entries;
     this.callbacks = callbacks;
-    this.editingEntryId = initialEditingEntryId;
     this.render();
   }
 
-  public update(weekStart: Date, entries: CalendarEntry[], editingEntryId?: string | null) {
+  public update(weekStart: Date, entries: CalendarEntry[]) {
     this.weekStart = weekStart;
     this.entries = entries;
-    if (editingEntryId !== undefined) {
-      this.editingEntryId = editingEntryId;
-    }
-    this.render();
-  }
-
-  public getEditingEntryId(): string | null {
-    return this.editingEntryId;
-  }
-
-  public setEditingEntryId(id: string | null) {
-    this.editingEntryId = id;
     this.render();
   }
 
@@ -118,7 +103,7 @@ export class WeekViewRenderComponent {
       colEl.dataset.date = dateStr;
       colEl.dataset.colIndex = colIndex.toString();
 
-      // Click on empty space to create new entry
+      // Click on empty space to create new entry & immediately edit title
       colEl.addEventListener('click', async (e) => {
         if ((e.target as HTMLElement).closest('.fcp-entry-card')) return;
 
@@ -134,8 +119,8 @@ export class WeekViewRenderComponent {
         const endTime = this.minutesToTimeStr(endMinutes);
 
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
-        this.editingEntryId = newEntry.id;
-        this.render();
+        const newCard = this.renderEntryCard(colEl, newEntry);
+        this.enableCardInlineEdit(newCard, newEntry);
       });
 
       const dayEntries = this.entries.filter(e => e.date === dateStr);
@@ -155,7 +140,7 @@ export class WeekViewRenderComponent {
     }, 0);
   }
 
-  private renderEntryCard(columnEl: HTMLElement, entry: CalendarEntry) {
+  private renderEntryCard(columnEl: HTMLElement, entry: CalendarEntry): HTMLElement {
     const startMins = this.timeStrToMinutes(entry.startTime);
     const endMins = this.timeStrToMinutes(entry.endTime);
 
@@ -169,9 +154,8 @@ export class WeekViewRenderComponent {
     const heightPx = Math.max(24, ((clampedEnd - clampedStart) / 60) * this.hourHeight);
 
     const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
-    const isEditing = this.editingEntryId === entry.id;
 
-    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? 'is-focused' : ''} ${isEditing ? 'is-editing' : ''}`);
+    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? 'is-focused' : ''}`);
     card.style.top = `${topPx}px`;
     card.style.height = `${heightPx}px`;
     card.dataset.id = entry.id;
@@ -180,116 +164,127 @@ export class WeekViewRenderComponent {
     card.createDiv('fcp-resize-handle bottom');
 
     const content = card.createDiv('fcp-entry-content');
+    content.innerHTML = `
+      <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
+      <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
+    `;
 
-    if (isEditing) {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'fcp-inline-input';
-      input.value = entry.title || '';
-      content.appendChild(input);
+    card.addEventListener('click', (e) => {
+      if (card.classList.contains('is-editing')) return;
+      e.stopPropagation();
+      this.callbacks.onTaskFocus(entry);
+    });
 
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 10);
+    card.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      this.enableCardInlineEdit(card, entry);
+    });
 
-      let isSaving = false;
-      const saveTitle = async () => {
-        if (isSaving) return;
-        isSaving = true;
-        const newTitle = input.value.trim() || 'New Entry';
-        entry.title = newTitle;
-        this.editingEntryId = null;
-        await this.callbacks.onEntryUpdate(entry);
-        this.render();
-      };
+    card.addEventListener('contextmenu', (e) => {
+      if (card.classList.contains('is-editing')) return;
+      e.preventDefault();
+      e.stopPropagation();
 
-      input.addEventListener('blur', saveTitle);
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          saveTitle();
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          this.editingEntryId = null;
-          this.render();
-        }
+      const menu = new Menu();
+      
+      menu.addItem(item => {
+        item.setTitle('Rename Entry')
+            .setIcon('lucide-edit-3')
+            .onClick(() => {
+              this.enableCardInlineEdit(card, entry);
+            });
       });
 
-      input.addEventListener('mousedown', (e) => e.stopPropagation());
-      input.addEventListener('click', (e) => e.stopPropagation());
+      menu.addItem(item => {
+        const nextType = entry.type === 'task' ? 'Event (Green)' : 'Task (Pastel Blue)';
+        item.setTitle(`Change to ${nextType}`)
+            .setIcon('lucide-refresh-cw')
+            .onClick(async () => {
+              entry.type = entry.type === 'task' ? 'event' : 'task';
+              card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? 'is-focused' : ''}`;
+              await this.callbacks.onEntryUpdate(entry);
+            });
+      });
 
-    } else {
+      menu.addItem(item => {
+        item.setTitle('Focus Pomodoro Timer')
+            .setIcon('lucide-timer')
+            .onClick(() => {
+              this.callbacks.onTaskFocus(entry);
+            });
+      });
+
+      menu.addSeparator();
+
+      menu.addItem(item => {
+        item.setTitle('Delete Entry')
+            .setIcon('lucide-trash-2')
+            .onClick(async () => {
+              card.remove();
+              await this.callbacks.onEntryDelete(entry);
+            });
+      });
+
+      menu.showAtMouseEvent(e);
+    });
+
+    this.setupCardDrag(card, entry);
+    return card;
+  }
+
+  private enableCardInlineEdit(card: HTMLElement, entry: CalendarEntry) {
+    const content = card.querySelector('.fcp-entry-content') as HTMLElement;
+    if (!content || card.classList.contains('is-editing')) return;
+
+    card.addClass('is-editing');
+    content.innerHTML = '';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'fcp-inline-input';
+    input.value = entry.title || '';
+    content.appendChild(input);
+
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+
+    let isFinished = false;
+    const finishEdit = async (cancelled: boolean) => {
+      if (isFinished) return;
+      isFinished = true;
+
+      card.removeClass('is-editing');
+      if (!cancelled) {
+        const newTitle = input.value.trim() || 'New Entry';
+        entry.title = newTitle;
+        await this.callbacks.onEntryUpdate(entry);
+      }
+
       content.innerHTML = `
         <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
         <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
       `;
+    };
 
-      card.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.callbacks.onTaskFocus(entry);
-      });
-
-      card.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        this.editingEntryId = entry.id;
-        this.render();
-      });
-
-      card.addEventListener('contextmenu', (e) => {
+    input.addEventListener('blur', () => finishEdit(false));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        e.stopPropagation();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEdit(true);
+      }
+    });
 
-        const menu = new Menu();
-        
-        menu.addItem(item => {
-          item.setTitle('Rename Entry')
-              .setIcon('lucide-edit-3')
-              .onClick(() => {
-                this.editingEntryId = entry.id;
-                this.render();
-              });
-        });
-
-        menu.addItem(item => {
-          const nextType = entry.type === 'task' ? 'Event (Green)' : 'Task (Pastel Blue)';
-          item.setTitle(`Change to ${nextType}`)
-              .setIcon('lucide-refresh-cw')
-              .onClick(async () => {
-                entry.type = entry.type === 'task' ? 'event' : 'task';
-                await this.callbacks.onEntryUpdate(entry);
-                this.render();
-              });
-        });
-
-        menu.addItem(item => {
-          item.setTitle('Focus Pomodoro Timer')
-              .setIcon('lucide-timer')
-              .onClick(() => {
-                this.callbacks.onTaskFocus(entry);
-                this.render();
-              });
-        });
-
-        menu.addSeparator();
-
-        menu.addItem(item => {
-          item.setTitle('Delete Entry')
-              .setIcon('lucide-trash-2')
-              .onClick(async () => {
-                await this.callbacks.onEntryDelete(entry);
-                this.render();
-              });
-        });
-
-        menu.showAtMouseEvent(e);
-      });
-
-      this.setupCardDrag(card, entry, columnEl);
-    }
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('dblclick', (e) => e.stopPropagation());
   }
 
-  private setupCardDrag(card: HTMLElement, entry: CalendarEntry, columnEl: HTMLElement) {
+  private setupCardDrag(card: HTMLElement, entry: CalendarEntry) {
     let isDragging = false;
     let dragMode: 'move' | 'resize-top' | 'resize-bottom' = 'move';
     let startY = 0;
@@ -297,7 +292,7 @@ export class WeekViewRenderComponent {
     let startHeight = 0;
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0 || (e.target as HTMLElement).tagName === 'INPUT') return;
+      if (e.button !== 0 || card.classList.contains('is-editing')) return;
 
       const target = e.target as HTMLElement;
       if (target.classList.contains('top')) {
@@ -353,8 +348,13 @@ export class WeekViewRenderComponent {
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
 
+      // Update time label text on card DOM
+      const timeDiv = card.querySelector('.fcp-entry-time');
+      if (timeDiv) {
+        timeDiv.textContent = `${entry.startTime} - ${entry.endTime}`;
+      }
+
       await this.callbacks.onEntryUpdate(entry);
-      this.render();
     };
 
     card.addEventListener('mousedown', onMouseDown);

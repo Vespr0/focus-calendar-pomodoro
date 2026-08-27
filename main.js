@@ -43,6 +43,7 @@ var DEFAULT_SETTINGS = {
 var import_obsidian = require("obsidian");
 var StorageManager = class {
   constructor(app, settingsGetter) {
+    this.isLocalSaving = false;
     this.app = app;
     this.settingsGetter = settingsGetter;
   }
@@ -84,7 +85,11 @@ var StorageManager = class {
     await this.ensureDataFolderExists();
     const path = this.getMonthFilePath(yearMonth);
     const data = JSON.stringify(entries, null, 2);
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, data);
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
   }
   async saveEntry(entry) {
     const yearMonth = entry.date.substring(0, 7);
@@ -117,7 +122,11 @@ var StorageManager = class {
       logs = [];
     }
     logs.push(session);
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
     if (session.taskId && session.type === "work") {
       const entries = await this.loadEntriesForMonth(yearMonth);
       const entry = entries.find((e) => e.id === session.taskId);
@@ -260,7 +269,11 @@ var StorageManager = class {
         date: todayStr
       }
     ];
+    this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
   }
 };
 
@@ -514,8 +527,7 @@ var PomodoroHeaderComponent = class {
 var import_obsidian2 = require("obsidian");
 var WeekViewRenderComponent = class {
   // pixels per hour
-  constructor(containerEl, weekStart, entries, callbacks, initialEditingEntryId = null) {
-    this.editingEntryId = null;
+  constructor(containerEl, weekStart, entries, callbacks) {
     // Constants
     this.startHour = 5;
     // 05:00
@@ -528,22 +540,11 @@ var WeekViewRenderComponent = class {
     this.weekStart = weekStart;
     this.entries = entries;
     this.callbacks = callbacks;
-    this.editingEntryId = initialEditingEntryId;
     this.render();
   }
-  update(weekStart, entries, editingEntryId) {
+  update(weekStart, entries) {
     this.weekStart = weekStart;
     this.entries = entries;
-    if (editingEntryId !== void 0) {
-      this.editingEntryId = editingEntryId;
-    }
-    this.render();
-  }
-  getEditingEntryId() {
-    return this.editingEntryId;
-  }
-  setEditingEntryId(id) {
-    this.editingEntryId = id;
     this.render();
   }
   render() {
@@ -603,8 +604,8 @@ var WeekViewRenderComponent = class {
         const startTime = this.minutesToTimeStr(startMinutes);
         const endTime = this.minutesToTimeStr(endMinutes);
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
-        this.editingEntryId = newEntry.id;
-        this.render();
+        const newCard = this.renderEntryCard(colEl, newEntry);
+        this.enableCardInlineEdit(newCard, newEntry);
       });
       const dayEntries = this.entries.filter((e) => e.date === dateStr);
       dayEntries.forEach((entry) => {
@@ -630,106 +631,116 @@ var WeekViewRenderComponent = class {
     const topPx = (clampedStart - minStartScale) / 60 * this.hourHeight;
     const heightPx = Math.max(24, (clampedEnd - clampedStart) / 60 * this.hourHeight);
     const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
-    const isEditing = this.editingEntryId === entry.id;
-    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? "is-focused" : ""} ${isEditing ? "is-editing" : ""}`);
+    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? "is-focused" : ""}`);
     card.style.top = `${topPx}px`;
     card.style.height = `${heightPx}px`;
     card.dataset.id = entry.id;
     card.createDiv("fcp-resize-handle top");
     card.createDiv("fcp-resize-handle bottom");
     const content = card.createDiv("fcp-entry-content");
-    if (isEditing) {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "fcp-inline-input";
-      input.value = entry.title || "";
-      content.appendChild(input);
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 10);
-      let isSaving = false;
-      const saveTitle = async () => {
-        if (isSaving)
-          return;
-        isSaving = true;
+    content.innerHTML = `
+      <div class="fcp-entry-title">${this.escapeHtml(entry.title || "Untitled")}</div>
+      <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
+    `;
+    card.addEventListener("click", (e) => {
+      if (card.classList.contains("is-editing"))
+        return;
+      e.stopPropagation();
+      this.callbacks.onTaskFocus(entry);
+    });
+    card.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this.enableCardInlineEdit(card, entry);
+    });
+    card.addEventListener("contextmenu", (e) => {
+      if (card.classList.contains("is-editing"))
+        return;
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = new import_obsidian2.Menu();
+      menu.addItem((item) => {
+        item.setTitle("Rename Entry").setIcon("lucide-edit-3").onClick(() => {
+          this.enableCardInlineEdit(card, entry);
+        });
+      });
+      menu.addItem((item) => {
+        const nextType = entry.type === "task" ? "Event (Green)" : "Task (Pastel Blue)";
+        item.setTitle(`Change to ${nextType}`).setIcon("lucide-refresh-cw").onClick(async () => {
+          entry.type = entry.type === "task" ? "event" : "task";
+          card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? "is-focused" : ""}`;
+          await this.callbacks.onEntryUpdate(entry);
+        });
+      });
+      menu.addItem((item) => {
+        item.setTitle("Focus Pomodoro Timer").setIcon("lucide-timer").onClick(() => {
+          this.callbacks.onTaskFocus(entry);
+        });
+      });
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item.setTitle("Delete Entry").setIcon("lucide-trash-2").onClick(async () => {
+          card.remove();
+          await this.callbacks.onEntryDelete(entry);
+        });
+      });
+      menu.showAtMouseEvent(e);
+    });
+    this.setupCardDrag(card, entry);
+    return card;
+  }
+  enableCardInlineEdit(card, entry) {
+    const content = card.querySelector(".fcp-entry-content");
+    if (!content || card.classList.contains("is-editing"))
+      return;
+    card.addClass("is-editing");
+    content.innerHTML = "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "fcp-inline-input";
+    input.value = entry.title || "";
+    content.appendChild(input);
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    let isFinished = false;
+    const finishEdit = async (cancelled) => {
+      if (isFinished)
+        return;
+      isFinished = true;
+      card.removeClass("is-editing");
+      if (!cancelled) {
         const newTitle = input.value.trim() || "New Entry";
         entry.title = newTitle;
-        this.editingEntryId = null;
         await this.callbacks.onEntryUpdate(entry);
-        this.render();
-      };
-      input.addEventListener("blur", saveTitle);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          saveTitle();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          this.editingEntryId = null;
-          this.render();
-        }
-      });
-      input.addEventListener("mousedown", (e) => e.stopPropagation());
-      input.addEventListener("click", (e) => e.stopPropagation());
-    } else {
+      }
       content.innerHTML = `
         <div class="fcp-entry-title">${this.escapeHtml(entry.title || "Untitled")}</div>
         <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
       `;
-      card.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.callbacks.onTaskFocus(entry);
-      });
-      card.addEventListener("dblclick", (e) => {
-        e.stopPropagation();
-        this.editingEntryId = entry.id;
-        this.render();
-      });
-      card.addEventListener("contextmenu", (e) => {
+    };
+    input.addEventListener("blur", () => finishEdit(false));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
         e.preventDefault();
-        e.stopPropagation();
-        const menu = new import_obsidian2.Menu();
-        menu.addItem((item) => {
-          item.setTitle("Rename Entry").setIcon("lucide-edit-3").onClick(() => {
-            this.editingEntryId = entry.id;
-            this.render();
-          });
-        });
-        menu.addItem((item) => {
-          const nextType = entry.type === "task" ? "Event (Green)" : "Task (Pastel Blue)";
-          item.setTitle(`Change to ${nextType}`).setIcon("lucide-refresh-cw").onClick(async () => {
-            entry.type = entry.type === "task" ? "event" : "task";
-            await this.callbacks.onEntryUpdate(entry);
-            this.render();
-          });
-        });
-        menu.addItem((item) => {
-          item.setTitle("Focus Pomodoro Timer").setIcon("lucide-timer").onClick(() => {
-            this.callbacks.onTaskFocus(entry);
-            this.render();
-          });
-        });
-        menu.addSeparator();
-        menu.addItem((item) => {
-          item.setTitle("Delete Entry").setIcon("lucide-trash-2").onClick(async () => {
-            await this.callbacks.onEntryDelete(entry);
-            this.render();
-          });
-        });
-        menu.showAtMouseEvent(e);
-      });
-      this.setupCardDrag(card, entry, columnEl);
-    }
+        input.blur();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        finishEdit(true);
+      }
+    });
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("dblclick", (e) => e.stopPropagation());
   }
-  setupCardDrag(card, entry, columnEl) {
+  setupCardDrag(card, entry) {
     let isDragging = false;
     let dragMode = "move";
     let startY = 0;
     let startTop = 0;
     let startHeight = 0;
     const onMouseDown = (e) => {
-      if (e.button !== 0 || e.target.tagName === "INPUT")
+      if (e.button !== 0 || card.classList.contains("is-editing"))
         return;
       const target = e.target;
       if (target.classList.contains("top")) {
@@ -777,8 +788,11 @@ var WeekViewRenderComponent = class {
       const endMins = Math.min(this.endHour * 60, startMins + durationMins);
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
+      const timeDiv = card.querySelector(".fcp-entry-time");
+      if (timeDiv) {
+        timeDiv.textContent = `${entry.startTime} - ${entry.endTime}`;
+      }
       await this.callbacks.onEntryUpdate(entry);
-      this.render();
     };
     card.addEventListener("mousedown", onMouseDown);
   }
@@ -919,7 +933,6 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     super(leaf);
     this.viewMode = "week";
     this.currentDate = /* @__PURE__ */ new Date();
-    this.activeEditingEntryId = null;
     this.headerComponent = null;
     this.weekComponent = null;
     this.monthComponent = null;
@@ -947,9 +960,6 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     this.pomoLogs = await this.storage.loadPomodoroLogsForMonth(yearMonth);
   }
   renderView() {
-    if (this.weekComponent) {
-      this.activeEditingEntryId = this.weekComponent.getEditingEntryId();
-    }
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("fcp-main-container");
@@ -1035,23 +1045,22 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
               createdAt: Date.now(),
               updatedAt: Date.now()
             };
+            this.entries.push(newEntry);
             await this.storage.saveEntry(newEntry);
-            await this.refreshData();
             return newEntry;
           },
           onEntryUpdate: async (entry) => {
             entry.updatedAt = Date.now();
             await this.storage.saveEntry(entry);
-            await this.refreshData();
             this.updateHeaderStats();
           },
           onEntryDelete: async (entry) => {
             var _a;
             await this.storage.deleteEntry(entry.id, entry.date);
+            this.entries = this.entries.filter((e) => e.id !== entry.id);
             if (((_a = this.pomodoro.getFocusedTask()) == null ? void 0 : _a.id) === entry.id) {
               this.pomodoro.setFocusedTask(null);
             }
-            await this.refreshData();
             this.updateHeaderStats();
           },
           onTaskFocus: (entry) => {
@@ -1062,8 +1071,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
             var _a;
             return (_a = this.pomodoro.getFocusedTask()) == null ? void 0 : _a.id;
           }
-        },
-        this.activeEditingEntryId
+        }
       );
     } else {
       this.monthComponent = new MonthViewRenderComponent(
