@@ -37,7 +37,7 @@ export class PomodoroHeaderComponent {
 
     const state = this.pomodoroManager.getState();
 
-    // IF MONTH VIEW: View only, hide pomodoro timer & task focus box. Render statistics banner.
+    // IF MONTH VIEW: View only, hide pomodoro timer. Render statistics banner.
     if (this.viewMode === 'month') {
       const statsBanner = this.containerEl.createDiv('fcp-month-stats-banner');
       statsBanner.innerHTML = `
@@ -53,7 +53,7 @@ export class PomodoroHeaderComponent {
       return;
     }
 
-    // WEEK VIEW: Full Pomodoro Timer + Task Focus + Weekly Hours
+    // WEEK VIEW: Radial Pomodoro Timer + Controls & Weekly Hours (no redundant focus box)
     const isWork = state.mode === 'work';
     const accentColor = isWork ? 'var(--fcp-red-accent, #ef4444)' : 'var(--fcp-blue-accent, #3b82f6)';
     const modeLabel = isWork ? 'WORK SESSION' : 'BREAK TIME';
@@ -61,7 +61,7 @@ export class PomodoroHeaderComponent {
     // Left section: Radial Progress Ring & Controls
     const leftSection = this.containerEl.createDiv('fcp-pomo-left');
 
-    const svgSize = 68;
+    const svgSize = 64;
     const strokeWidth = 5;
     const radius = (svgSize - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
@@ -129,27 +129,7 @@ export class PomodoroHeaderComponent {
     skipBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>`;
     skipBtn.onclick = () => this.pomodoroManager.switchMode();
 
-    // Focused Task display
-    const midSection = this.containerEl.createDiv('fcp-pomo-mid');
-    const taskBox = midSection.createDiv('fcp-focus-task-box');
-    
-    if (state.focusedTask) {
-      taskBox.addClass('active');
-      taskBox.innerHTML = `
-        <span class="fcp-focus-label">FOCUSING ON:</span>
-        <span class="fcp-focus-title">${this.escapeHtml(state.focusedTask.title || 'Untitled Task')}</span>
-      `;
-      const clearBtn = taskBox.createEl('button', { cls: 'fcp-clear-focus-btn', text: '×' });
-      clearBtn.onclick = (e) => {
-        e.stopPropagation();
-        this.pomodoroManager.setFocusedTask(null);
-      };
-    } else {
-      taskBox.removeClass('active');
-      taskBox.innerHTML = `<span class="fcp-focus-prompt">Click any task in week view to set focus</span>`;
-    }
-
-    // Right section: Weekly Hours
+    // Right section: Weekly Hours Card
     const rightSection = this.containerEl.createDiv('fcp-pomo-right');
     const hoursCard = rightSection.createDiv('fcp-hours-card');
     
@@ -157,11 +137,5 @@ export class PomodoroHeaderComponent {
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">hrs</span></div>
       <div class="fcp-hours-sub">WEEKLY STUDIED HOURS</div>
     `;
-  }
-
-  private escapeHtml(str: string): string {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 }

@@ -11,9 +11,10 @@ export interface WeekViewCallbacks {
 
 export class WeekViewRenderComponent {
   private containerEl: HTMLElement;
-  private weekStart: Date; // Date object for Monday of the week
+  private weekStart: Date;
   private entries: CalendarEntry[];
   private callbacks: WeekViewCallbacks;
+  private editingEntryId: string | null = null;
 
   // Constants
   private readonly startHour = 5; // 05:00
@@ -25,18 +26,32 @@ export class WeekViewRenderComponent {
     containerEl: HTMLElement,
     weekStart: Date,
     entries: CalendarEntry[],
-    callbacks: WeekViewCallbacks
+    callbacks: WeekViewCallbacks,
+    initialEditingEntryId: string | null = null
   ) {
     this.containerEl = containerEl;
     this.weekStart = weekStart;
     this.entries = entries;
     this.callbacks = callbacks;
+    this.editingEntryId = initialEditingEntryId;
     this.render();
   }
 
-  public update(weekStart: Date, entries: CalendarEntry[]) {
+  public update(weekStart: Date, entries: CalendarEntry[], editingEntryId?: string | null) {
     this.weekStart = weekStart;
     this.entries = entries;
+    if (editingEntryId !== undefined) {
+      this.editingEntryId = editingEntryId;
+    }
+    this.render();
+  }
+
+  public getEditingEntryId(): string | null {
+    return this.editingEntryId;
+  }
+
+  public setEditingEntryId(id: string | null) {
+    this.editingEntryId = id;
     this.render();
   }
 
@@ -44,7 +59,6 @@ export class WeekViewRenderComponent {
     this.containerEl.empty();
     this.containerEl.addClass('fcp-week-view-wrapper');
 
-    // Build array of 7 dates (Mon -> Sun)
     const weekDates: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(this.weekStart);
@@ -76,7 +90,7 @@ export class WeekViewRenderComponent {
     // Main Scrollable Grid Body
     const gridBody = this.containerEl.createDiv('fcp-week-grid-body');
 
-    // Left Time Labels Gutter
+    // Time Labels Gutter
     const timeGutter = gridBody.createDiv('fcp-time-gutter');
     for (let h = this.startHour; h <= this.endHour; h++) {
       const timeLabel = timeGutter.createDiv('fcp-time-label');
@@ -89,7 +103,7 @@ export class WeekViewRenderComponent {
     const columnsContainer = gridBody.createDiv('fcp-columns-container');
     columnsContainer.style.height = `${this.totalHours * this.hourHeight}px`;
 
-    // Render background hour grid lines across all columns
+    // Hour lines
     const gridLines = columnsContainer.createDiv('fcp-grid-lines');
     for (let h = 0; h < this.totalHours; h++) {
       const line = gridLines.createDiv('fcp-grid-line');
@@ -97,7 +111,7 @@ export class WeekViewRenderComponent {
       line.style.height = `${this.hourHeight}px`;
     }
 
-    // Render 7 Day Columns
+    // 7 Day Columns
     weekDates.forEach((date, colIndex) => {
       const dateStr = this.formatDateIso(date);
       const colEl = columnsContainer.createDiv('fcp-day-column');
@@ -112,7 +126,6 @@ export class WeekViewRenderComponent {
         const offsetY = e.clientY - rect.top;
         const totalMinutesFromStart = Math.floor((offsetY / (this.totalHours * this.hourHeight)) * (this.totalHours * 60));
         
-        // Round to nearest 15 mins
         const roundedMinutes = Math.floor(totalMinutesFromStart / 15) * 15;
         const startMinutes = (this.startHour * 60) + Math.max(0, Math.min(roundedMinutes, (this.endHour * 60) - 60));
         const endMinutes = Math.min(startMinutes + 60, this.endHour * 60);
@@ -120,11 +133,12 @@ export class WeekViewRenderComponent {
         const startTime = this.minutesToTimeStr(startMinutes);
         const endTime = this.minutesToTimeStr(endMinutes);
 
+        // Set editing id prior to creation so newly rendered view focuses input
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
-        this.renderEntryInlineEdit(colEl, newEntry);
+        this.editingEntryId = newEntry.id;
+        this.render();
       });
 
-      // Filter entries for this day
       const dayEntries = this.entries.filter(e => e.date === dateStr);
       dayEntries.forEach(entry => {
         this.renderEntryCard(colEl, entry);
@@ -146,104 +160,125 @@ export class WeekViewRenderComponent {
     const heightPx = Math.max(24, ((clampedEnd - clampedStart) / 60) * this.hourHeight);
 
     const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
+    const isEditing = this.editingEntryId === entry.id;
 
-    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? 'is-focused' : ''}`);
+    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? 'is-focused' : ''} ${isEditing ? 'is-editing' : ''}`);
     card.style.top = `${topPx}px`;
     card.style.height = `${heightPx}px`;
     card.dataset.id = entry.id;
 
-    const topHandle = card.createDiv('fcp-resize-handle top');
-    const bottomHandle = card.createDiv('fcp-resize-handle bottom');
+    card.createDiv('fcp-resize-handle top');
+    card.createDiv('fcp-resize-handle bottom');
 
     const content = card.createDiv('fcp-entry-content');
-    content.innerHTML = `
-      <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
-      <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
-    `;
 
-    card.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.callbacks.onTaskFocus(entry);
-      columnEl.querySelectorAll('.fcp-entry-card').forEach(c => c.removeClass('is-focused'));
-      card.addClass('is-focused');
-    });
+    if (isEditing) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'fcp-inline-input';
+      input.value = entry.title || '';
+      content.appendChild(input);
 
-    content.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      this.renderEntryInlineEdit(columnEl, entry, card);
-    });
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 10);
 
-    card.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const menu = new Menu();
-      menu.addItem(item => {
-        const nextType = entry.type === 'task' ? 'Event (Green)' : 'Task (Pastel Blue)';
-        item.setTitle(`Change to ${nextType}`)
-            .setIcon('lucide-refresh-cw')
-            .onClick(async () => {
-              entry.type = entry.type === 'task' ? 'event' : 'task';
-              await this.callbacks.onEntryUpdate(entry);
-              this.render();
-            });
-      });
-
-      menu.addItem(item => {
-        item.setTitle('Focus Pomodoro Timer')
-            .setIcon('lucide-timer')
-            .onClick(() => {
-              this.callbacks.onTaskFocus(entry);
-              this.render();
-            });
-      });
-
-      menu.addSeparator();
-
-      menu.addItem(item => {
-        item.setTitle('Delete Entry')
-            .setIcon('lucide-trash-2')
-            .onClick(async () => {
-              await this.callbacks.onEntryDelete(entry);
-              this.render();
-            });
-      });
-
-      menu.showAtMouseEvent(e);
-    });
-
-    this.setupCardDrag(card, entry, columnEl);
-  }
-
-  private renderEntryInlineEdit(columnEl: HTMLElement, entry: CalendarEntry, existingCard?: HTMLElement) {
-    const card = existingCard || columnEl.createDiv(`fcp-entry-card type-${entry.type}`);
-    const titleEl = card.querySelector('.fcp-entry-title') || card;
-    titleEl.innerHTML = '';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'fcp-inline-input';
-    input.value = entry.title || '';
-    titleEl.appendChild(input);
-
-    input.focus();
-    input.select();
-
-    const save = async () => {
-      const newTitle = input.value.trim() || 'Untitled';
-      entry.title = newTitle;
-      await this.callbacks.onEntryUpdate(entry);
-      this.render();
-    };
-
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        input.blur();
-      } else if (e.key === 'Escape') {
+      let isSaving = false;
+      const saveTitle = async () => {
+        if (isSaving) return;
+        isSaving = true;
+        const newTitle = input.value.trim() || 'New Entry';
+        entry.title = newTitle;
+        this.editingEntryId = null;
+        await this.callbacks.onEntryUpdate(entry);
         this.render();
-      }
-    });
+      };
+
+      input.addEventListener('blur', saveTitle);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveTitle();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.editingEntryId = null;
+          this.render();
+        }
+      });
+
+      // Prevent card drag from capturing while typing
+      input.addEventListener('mousedown', (e) => e.stopPropagation());
+      input.addEventListener('click', (e) => e.stopPropagation());
+
+    } else {
+      content.innerHTML = `
+        <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
+        <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
+      `;
+
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.callbacks.onTaskFocus(entry);
+      });
+
+      card.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        this.editingEntryId = entry.id;
+        this.render();
+      });
+
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const menu = new Menu();
+        
+        menu.addItem(item => {
+          item.setTitle('Rename Entry')
+              .setIcon('lucide-edit-3')
+              .onClick(() => {
+                this.editingEntryId = entry.id;
+                this.render();
+              });
+        });
+
+        menu.addItem(item => {
+          const nextType = entry.type === 'task' ? 'Event (Green)' : 'Task (Pastel Blue)';
+          item.setTitle(`Change to ${nextType}`)
+              .setIcon('lucide-refresh-cw')
+              .onClick(async () => {
+                entry.type = entry.type === 'task' ? 'event' : 'task';
+                await this.callbacks.onEntryUpdate(entry);
+                this.render();
+              });
+        });
+
+        menu.addItem(item => {
+          item.setTitle('Focus Pomodoro Timer')
+              .setIcon('lucide-timer')
+              .onClick(() => {
+                this.callbacks.onTaskFocus(entry);
+                this.render();
+              });
+        });
+
+        menu.addSeparator();
+
+        menu.addItem(item => {
+          item.setTitle('Delete Entry')
+              .setIcon('lucide-trash-2')
+              .onClick(async () => {
+                await this.callbacks.onEntryDelete(entry);
+                this.render();
+              });
+        });
+
+        menu.showAtMouseEvent(e);
+      });
+
+      this.setupCardDrag(card, entry, columnEl);
+    }
   }
 
   private setupCardDrag(card: HTMLElement, entry: CalendarEntry, columnEl: HTMLElement) {

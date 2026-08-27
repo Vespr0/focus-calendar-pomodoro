@@ -14,6 +14,7 @@ export class FocusCalendarView extends ItemView {
 
   private viewMode: ViewMode = 'week';
   private currentDate: Date = new Date();
+  private activeEditingEntryId: string | null = null;
 
   private headerComponent: PomodoroHeaderComponent | null = null;
   private weekComponent: WeekViewRenderComponent | null = null;
@@ -52,6 +53,10 @@ export class FocusCalendarView extends ItemView {
   }
 
   public renderView(): void {
+    if (this.weekComponent) {
+      this.activeEditingEntryId = this.weekComponent.getEditingEntryId();
+    }
+
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass('fcp-main-container');
@@ -168,7 +173,8 @@ export class FocusCalendarView extends ItemView {
             new Notice(`Focused on task: ${entry.title || 'Untitled'}`);
           },
           getFocusedTaskId: () => this.pomodoro.getFocusedTask()?.id
-        }
+        },
+        this.activeEditingEntryId
       );
     } else {
       this.monthComponent = new MonthViewRenderComponent(
