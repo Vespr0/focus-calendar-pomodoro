@@ -29,6 +29,7 @@
   background-color: var(--background-primary);
   color: var(--text-normal);
   font-family: var(--font-interface, sans-serif);
+  box-sizing: border-box;
 }
 
 /* Navigation Bar */
@@ -39,6 +40,7 @@
   padding: 10px 16px;
   border-bottom: 1px solid var(--background-modifier-border);
   background-color: var(--background-secondary);
+  box-sizing: border-box;
 }
 
 .fcp-nav-left {
@@ -84,6 +86,7 @@
 .fcp-header-slot {
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-secondary-alt);
+  box-sizing: border-box;
 }
 
 .fcp-pomodoro-header {
@@ -92,6 +95,7 @@
   justify-content: space-between;
   padding: 12px 20px;
   gap: 20px;
+  box-sizing: border-box;
 }
 
 .fcp-pomodoro-header.month-mode {
@@ -225,6 +229,7 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  box-sizing: border-box;
 }
 
 /* WEEK VIEW STYLES */
@@ -233,30 +238,36 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .fcp-week-header {
   display: flex;
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
+  box-sizing: border-box;
 }
 
 .fcp-time-gutter-header {
   width: 60px;
   min-width: 60px;
+  max-width: 60px;
   border-right: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
 }
 
 .fcp-week-days-header-grid {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  box-sizing: border-box;
 }
 
 .fcp-day-header-cell {
   text-align: center;
   padding: 8px 4px;
   border-right: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
 }
 
 .fcp-day-header-cell:last-child {
@@ -291,14 +302,17 @@
   display: flex;
   overflow-y: auto;
   position: relative;
+  box-sizing: border-box;
 }
 
 .fcp-time-gutter {
   width: 60px;
   min-width: 60px;
+  max-width: 60px;
   border-right: 1px solid var(--background-modifier-border);
   background: var(--background-secondary-alt);
   user-select: none;
+  box-sizing: border-box;
 }
 
 .fcp-time-label {
@@ -308,6 +322,7 @@
   padding-right: 8px;
   margin-top: -6px;
   font-family: var(--font-monospace, monospace);
+  box-sizing: border-box;
 }
 
 .fcp-columns-container {
@@ -315,6 +330,7 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   position: relative;
+  box-sizing: border-box;
 }
 
 .fcp-grid-lines {
@@ -324,6 +340,7 @@
   right: 0;
   bottom: 0;
   pointer-events: none;
+  box-sizing: border-box;
 }
 
 .fcp-grid-line {
@@ -335,6 +352,7 @@
   position: relative;
   border-right: 1px solid var(--background-modifier-border);
   height: 100%;
+  box-sizing: border-box;
 }
 
 .fcp-day-column:last-child {
@@ -435,6 +453,7 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .fcp-month-weekdays-header {
@@ -442,6 +461,7 @@
   grid-template-columns: repeat(7, 1fr);
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
+  box-sizing: border-box;
 }
 
 .fcp-month-weekday-col {
@@ -451,6 +471,12 @@
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
+  border-right: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
+}
+
+.fcp-month-weekday-col:last-child {
+  border-right: none;
 }
 
 .fcp-month-grid {
@@ -459,6 +485,7 @@
   grid-template-columns: repeat(7, 1fr);
   grid-auto-rows: 1fr;
   overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .fcp-month-cell {
@@ -471,6 +498,11 @@
   background: var(--background-primary);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.fcp-month-cell:nth-child(7n) {
+  border-right: none;
 }
 
 .fcp-month-cell:hover {
@@ -499,7 +531,7 @@
   flex-direction: column;
   gap: 3px;
   overflow-y: auto;
-  margin-bottom: 18px; /* space for hours tag */
+  margin-bottom: 18px;
 }
 
 .fcp-month-event-item {

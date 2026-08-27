@@ -133,7 +133,6 @@ export class WeekViewRenderComponent {
         const startTime = this.minutesToTimeStr(startMinutes);
         const endTime = this.minutesToTimeStr(endMinutes);
 
-        // Set editing id prior to creation so newly rendered view focuses input
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
         this.editingEntryId = newEntry.id;
         this.render();
@@ -144,6 +143,16 @@ export class WeekViewRenderComponent {
         this.renderEntryCard(colEl, entry);
       });
     });
+
+    // Align header grid columns with body grid columns accounting for scrollbar width
+    setTimeout(() => {
+      const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
+      if (scrollbarWidth > 0) {
+        headerRow.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        headerRow.style.paddingRight = '0px';
+      }
+    }, 0);
   }
 
   private renderEntryCard(columnEl: HTMLElement, entry: CalendarEntry) {
@@ -207,7 +216,6 @@ export class WeekViewRenderComponent {
         }
       });
 
-      // Prevent card drag from capturing while typing
       input.addEventListener('mousedown', (e) => e.stopPropagation());
       input.addEventListener('click', (e) => e.stopPropagation());
 

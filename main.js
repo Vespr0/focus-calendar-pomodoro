@@ -588,6 +588,14 @@ var WeekViewRenderComponent = class {
         this.renderEntryCard(colEl, entry);
       });
     });
+    setTimeout(() => {
+      const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
+      if (scrollbarWidth > 0) {
+        headerRow.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        headerRow.style.paddingRight = "0px";
+      }
+    }, 0);
   }
   renderEntryCard(columnEl, entry) {
     const startMins = this.timeStrToMinutes(entry.startTime);
@@ -865,6 +873,14 @@ var MonthViewRenderComponent = class {
         hoursTag.textContent = formattedHours;
       }
     }
+    setTimeout(() => {
+      const scrollbarWidth = monthGrid.offsetWidth - monthGrid.clientWidth;
+      if (scrollbarWidth > 0) {
+        weekdaysHeader.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        weekdaysHeader.style.paddingRight = "0px";
+      }
+    }, 0);
   }
   escapeHtml(str) {
     const div = document.createElement("div");

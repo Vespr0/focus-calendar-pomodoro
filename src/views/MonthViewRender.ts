@@ -85,7 +85,6 @@ export class MonthViewRenderComponent {
 
       const cellEl = monthGrid.createDiv(`fcp-month-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'is-today' : ''}`);
 
-      // Heatmap coloring based on work hours (max intensity at 8 hours)
       const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
       if (dailyHours > 0) {
         const intensity = Math.min(1, dailyHours / 8);
@@ -120,13 +119,22 @@ export class MonthViewRenderComponent {
         });
       }
 
-      // Display actual studied hours in bottom right corner of day cell
       if (dailyHours > 0) {
         const hoursTag = cellEl.createDiv('fcp-month-day-hours');
         const formattedHours = dailyHours % 1 === 0 ? `${dailyHours} Hrs` : `${dailyHours.toFixed(1)} Hrs`;
         hoursTag.textContent = formattedHours;
       }
     }
+
+    // Align month header columns with body grid columns accounting for scrollbar width
+    setTimeout(() => {
+      const scrollbarWidth = monthGrid.offsetWidth - monthGrid.clientWidth;
+      if (scrollbarWidth > 0) {
+        weekdaysHeader.style.paddingRight = `${scrollbarWidth}px`;
+      } else {
+        weekdaysHeader.style.paddingRight = '0px';
+      }
+    }, 0);
   }
 
   private escapeHtml(str: string): string {
