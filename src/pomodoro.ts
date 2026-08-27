@@ -20,15 +20,18 @@ export class PomodoroManager {
   private settingsGetter: () => FocusCalendarSettings;
   private onStateChange: (state: PomodoroState) => void;
   private onSessionComplete: (session: PomodoroLogSession) => void;
+  private playAudioCallback?: (filePath: string) => void;
 
   constructor(
     settingsGetter: () => FocusCalendarSettings,
     onStateChange: (state: PomodoroState) => void,
-    onSessionComplete: (session: PomodoroLogSession) => void
+    onSessionComplete: (session: PomodoroLogSession) => void,
+    playAudioCallback?: (filePath: string) => void
   ) {
     this.settingsGetter = settingsGetter;
     this.onStateChange = onStateChange;
     this.onSessionComplete = onSessionComplete;
+    this.playAudioCallback = playAudioCallback;
     this.resetTimer();
   }
 
@@ -124,15 +127,12 @@ export class PomodoroManager {
 
     this.onSessionComplete(session);
 
-    try {
-      const audioWin = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioWin.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(this.mode === 'work' ? 880 : 440, audioWin.currentTime);
-      osc.connect(audioWin.destination);
-      osc.start();
-      osc.stop(audioWin.currentTime + 0.5);
-    } catch (e) {}
+    // Play vault MP3 audio ONLY if explicitly specified in plugin settings
+    if (settings.soundFilePath && settings.soundFilePath.trim() !== '') {
+      if (this.playAudioCallback) {
+        this.playAudioCallback(settings.soundFilePath.trim());
+      }
+    }
 
     this.mode = this.mode === 'work' ? 'break' : 'work';
     this.resetTimer();

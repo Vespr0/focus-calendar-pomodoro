@@ -35,7 +35,8 @@ var DEFAULT_SETTINGS = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
   dataDirectory: "CalendarData",
-  autoStartBreak: false
+  autoStartBreak: false,
+  soundFilePath: ""
 };
 
 // src/storage.ts
@@ -265,7 +266,7 @@ var StorageManager = class {
 
 // src/pomodoro.ts
 var PomodoroManager = class {
-  constructor(settingsGetter, onStateChange, onSessionComplete) {
+  constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback) {
     this.mode = "work";
     this.isRunning = false;
     this.timeLeftSeconds = 40 * 60;
@@ -275,6 +276,7 @@ var PomodoroManager = class {
     this.settingsGetter = settingsGetter;
     this.onStateChange = onStateChange;
     this.onSessionComplete = onSessionComplete;
+    this.playAudioCallback = playAudioCallback;
     this.resetTimer();
   }
   getSettings() {
@@ -358,15 +360,10 @@ var PomodoroManager = class {
       date: today
     };
     this.onSessionComplete(session);
-    try {
-      const audioWin = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioWin.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(this.mode === "work" ? 880 : 440, audioWin.currentTime);
-      osc.connect(audioWin.destination);
-      osc.start();
-      osc.stop(audioWin.currentTime + 0.5);
-    } catch (e) {
+    if (settings.soundFilePath && settings.soundFilePath.trim() !== "") {
+      if (this.playAudioCallback) {
+        this.playAudioCallback(settings.soundFilePath.trim());
+      }
     }
     this.mode = this.mode === "work" ? "break" : "work";
     this.resetTimer();
@@ -389,17 +386,18 @@ var import_obsidian3 = require("obsidian");
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
-  // in hours
-  constructor(containerEl, pomodoroManager, viewMode, totalHours) {
+  constructor(containerEl, pomodoroManager, viewMode, totalHours, imminentEvent = null) {
     this.containerEl = containerEl;
     this.pomodoroManager = pomodoroManager;
     this.viewMode = viewMode;
     this.totalHours = totalHours;
+    this.imminentEvent = imminentEvent;
     this.render();
   }
-  update(viewMode, totalHours) {
+  update(viewMode, totalHours, imminentEvent = null) {
     this.viewMode = viewMode;
     this.totalHours = totalHours;
+    this.imminentEvent = imminentEvent;
     this.render();
   }
   render() {
@@ -407,24 +405,44 @@ var PomodoroHeaderComponent = class {
     this.containerEl.addClass("fcp-pomodoro-header");
     if (this.viewMode === "month") {
       this.containerEl.addClass("month-mode");
+      this.renderMonthHeader();
     } else {
       this.containerEl.removeClass("month-mode");
+      this.renderWeekHeader();
     }
-    const state = this.pomodoroManager.getState();
-    if (this.viewMode === "month") {
-      const statsBanner = this.containerEl.createDiv("fcp-month-stats-banner");
-      statsBanner.innerHTML = `
-        <div class="fcp-hours-card month-card">
-          <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
-          <div class="fcp-hours-sub">THIS MONTH</div>
-        </div>
+  }
+  renderMonthHeader() {
+    const leftDiv = this.containerEl.createDiv("fcp-pomo-left-imminent");
+    if (this.imminentEvent) {
+      let daysStr = "";
+      if (this.imminentEvent.daysAway === 0) {
+        daysStr = "today";
+      } else if (this.imminentEvent.daysAway === 1) {
+        daysStr = "1 day away";
+      } else {
+        daysStr = `${this.imminentEvent.daysAway} days away`;
+      }
+      leftDiv.innerHTML = `
+        <span class="fcp-imminent-badge">UPCOMING EVENT</span>
+        <span class="fcp-imminent-text"><strong>${this.escapeHtml(this.imminentEvent.title)}</strong> is ${daysStr}</span>
       `;
-      return;
+    } else {
+      leftDiv.innerHTML = `<span class="fcp-imminent-text muted">No upcoming events</span>`;
     }
+    const rightSection = this.containerEl.createDiv("fcp-pomo-right");
+    const hoursCard = rightSection.createDiv("fcp-hours-card");
+    hoursCard.innerHTML = `
+      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-sub">THIS MONTH</div>
+    `;
+  }
+  renderWeekHeader() {
+    const state = this.pomodoroManager.getState();
     const isWork = state.mode === "work";
     const accentColor = isWork ? "var(--fcp-red-accent, #ef4444)" : "var(--fcp-blue-accent, #3b82f6)";
     const modeLabel = isWork ? "WORK SESSION" : "BREAK TIME";
-    const leftSection = this.containerEl.createDiv("fcp-pomo-left");
+    this.containerEl.createDiv("fcp-pomo-left-spacer");
+    const centerSection = this.containerEl.createDiv("fcp-pomo-center");
     const svgSize = 64;
     const strokeWidth = 5;
     const radius = (svgSize - strokeWidth) / 2;
@@ -434,7 +452,7 @@ var PomodoroHeaderComponent = class {
     const minutes = Math.floor(state.timeLeftSeconds / 60);
     const seconds = state.timeLeftSeconds % 60;
     const formattedTime = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    const svgWrapper = leftSection.createDiv("fcp-radial-wrapper");
+    const svgWrapper = centerSection.createDiv("fcp-radial-wrapper");
     svgWrapper.style.setProperty("--accent-color", accentColor);
     svgWrapper.innerHTML = `
       <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" class="fcp-radial-svg">
@@ -454,7 +472,7 @@ var PomodoroHeaderComponent = class {
       </svg>
       <div class="fcp-radial-text">${formattedTime}</div>
     `;
-    const controlsDiv = leftSection.createDiv("fcp-pomo-controls");
+    const controlsDiv = centerSection.createDiv("fcp-pomo-controls");
     const modeBadge = controlsDiv.createDiv("fcp-mode-badge");
     modeBadge.textContent = modeLabel;
     modeBadge.style.color = accentColor;
@@ -484,6 +502,11 @@ var PomodoroHeaderComponent = class {
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
       <div class="fcp-hours-sub">THIS WEEK</div>
     `;
+  }
+  escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
   }
 };
 
@@ -985,11 +1008,13 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     };
     const pomoHeaderContainer = container.createDiv("fcp-header-slot");
     const totalHours = this.calculateTotalHours();
+    const imminentEvent = this.getImminentEvent();
     this.headerComponent = new PomodoroHeaderComponent(
       pomoHeaderContainer,
       this.pomodoro,
       this.viewMode,
-      totalHours
+      totalHours,
+      imminentEvent
     );
     const viewAreaContainer = container.createDiv("fcp-view-area");
     if (this.viewMode === "week") {
@@ -1063,8 +1088,23 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
   }
   updateHeaderStats() {
     if (this.headerComponent) {
-      this.headerComponent.update(this.viewMode, this.calculateTotalHours());
+      this.headerComponent.update(this.viewMode, this.calculateTotalHours(), this.getImminentEvent());
     }
+  }
+  getImminentEvent() {
+    const todayStr = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    const todayTime = (/* @__PURE__ */ new Date(todayStr + "T00:00:00")).getTime();
+    const futureEvents = this.entries.filter((e) => e.type === "event" && e.date >= todayStr);
+    if (futureEvents.length === 0)
+      return null;
+    futureEvents.sort((a, b) => a.date.localeCompare(b.date));
+    const closest = futureEvents[0];
+    const eventTime = (/* @__PURE__ */ new Date(closest.date + "T00:00:00")).getTime();
+    const diffDays = Math.round((eventTime - todayTime) / (1e3 * 60 * 60 * 24));
+    return {
+      title: closest.title || "Untitled Event",
+      daysAway: Math.max(0, diffDays)
+    };
   }
   buildDailyHoursMap() {
     const map = /* @__PURE__ */ new Map();
@@ -1138,6 +1178,10 @@ var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
+    new import_obsidian4.Setting(containerEl).setName("Completion Alarm Sound (Vault MP3 Path)").setDesc("Path to an MP3 file in your vault (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.soundFilePath || "").onChange(async (value) => {
+      this.plugin.settings.soundFilePath = value.trim();
+      await this.plugin.saveSettings();
+    }));
     new import_obsidian4.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("CalendarData").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
       this.plugin.settings.dataDirectory = value.trim() || "CalendarData";
       await this.plugin.saveSettings();
@@ -1174,7 +1218,8 @@ var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
             leaf.view.refreshData().then(() => leaf.view.renderView());
           }
         });
-      }
+      },
+      (filePath) => this.playVaultAudio(filePath)
     );
     this.registerView(
       VIEW_TYPE_FOCUS_CALENDAR,
@@ -1202,6 +1247,20 @@ var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
         }
       })
     );
+  }
+  async playVaultAudio(filePath) {
+    try {
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof import_obsidian5.TFile) {
+        const resourcePath = this.app.vault.getResourcePath(file);
+        const audio = new Audio(resourcePath);
+        await audio.play();
+      } else {
+        console.warn(`Focus Calendar: Sound file not found at path: ${filePath}`);
+      }
+    } catch (err) {
+      console.error("Focus Calendar: Failed to play audio file from vault", err);
+    }
   }
   async activateView() {
     const { workspace } = this.app;

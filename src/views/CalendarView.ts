@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
-import { ViewMode, CalendarEntry, PomodoroLogSession } from '../types';
+import { ViewMode, CalendarEntry, PomodoroLogSession, ImminentEventInfo } from '../types';
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
 import { PomodoroHeaderComponent } from './PomodoroHeader';
@@ -123,11 +123,14 @@ export class FocusCalendarView extends ItemView {
 
     const pomoHeaderContainer = container.createDiv('fcp-header-slot');
     const totalHours = this.calculateTotalHours();
+    const imminentEvent = this.getImminentEvent();
+
     this.headerComponent = new PomodoroHeaderComponent(
       pomoHeaderContainer,
       this.pomodoro,
       this.viewMode,
-      totalHours
+      totalHours,
+      imminentEvent
     );
 
     const viewAreaContainer = container.createDiv('fcp-view-area');
@@ -200,8 +203,27 @@ export class FocusCalendarView extends ItemView {
 
   public updateHeaderStats() {
     if (this.headerComponent) {
-      this.headerComponent.update(this.viewMode, this.calculateTotalHours());
+      this.headerComponent.update(this.viewMode, this.calculateTotalHours(), this.getImminentEvent());
     }
+  }
+
+  private getImminentEvent(): ImminentEventInfo | null {
+    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayTime = new Date(todayStr + 'T00:00:00').getTime();
+
+    const futureEvents = this.entries.filter(e => e.type === 'event' && e.date >= todayStr);
+    if (futureEvents.length === 0) return null;
+
+    futureEvents.sort((a, b) => a.date.localeCompare(b.date));
+    const closest = futureEvents[0];
+
+    const eventTime = new Date(closest.date + 'T00:00:00').getTime();
+    const diffDays = Math.round((eventTime - todayTime) / (1000 * 60 * 60 * 24));
+
+    return {
+      title: closest.title || 'Untitled Event',
+      daysAway: Math.max(0, diffDays)
+    };
   }
 
   private buildDailyHoursMap(): Map<string, number> {

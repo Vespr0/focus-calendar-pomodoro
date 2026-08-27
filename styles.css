@@ -99,21 +99,49 @@
 }
 
 .fcp-pomodoro-header.month-mode {
-  padding: 8px 20px;
-  justify-content: flex-end;
+  padding: 10px 20px;
 }
 
-.fcp-month-stats-banner {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
+.fcp-pomo-left-spacer {
+  min-width: 130px;
+  flex: 1;
 }
 
-.fcp-pomo-left {
+.fcp-pomo-center {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
+  flex: 2;
+}
+
+.fcp-pomo-left-imminent {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fcp-imminent-badge {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid #22c55e;
+  color: #22c55e;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.fcp-imminent-text {
+  font-size: 0.88rem;
+  color: var(--text-normal);
+}
+
+.fcp-imminent-text.muted {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* Radial SVG Ring */
@@ -193,6 +221,9 @@
 .fcp-pomo-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  min-width: 130px;
+  flex: 1;
 }
 
 .fcp-hours-card {

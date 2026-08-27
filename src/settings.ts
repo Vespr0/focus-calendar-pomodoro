@@ -46,6 +46,17 @@ export class FocusCalendarSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Completion Alarm Sound (Vault MP3 Path)')
+      .setDesc('Path to an MP3 file in your vault (e.g. Sounds/bell.mp3). Leave blank for no sound.')
+      .addText(text => text
+        .setPlaceholder('Sounds/bell.mp3')
+        .setValue(this.plugin.settings.soundFilePath || '')
+        .onChange(async (value) => {
+          this.plugin.settings.soundFilePath = value.trim();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
       .setName('Data Storage Directory')
       .setDesc('Folder path in your vault where calendar JSON data files are saved.')
       .addText(text => text

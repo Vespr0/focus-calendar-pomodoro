@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from 'obsidian';
+import { Plugin, WorkspaceLeaf, TFile } from 'obsidian';
 import { FocusCalendarSettings, DEFAULT_SETTINGS, PomodoroLogSession } from './types';
 import { StorageManager } from './storage';
 import { PomodoroManager } from './pomodoro';
@@ -31,7 +31,8 @@ export default class FocusCalendarPlugin extends Plugin {
             leaf.view.refreshData().then(() => leaf.view.renderView());
           }
         });
-      }
+      },
+      (filePath: string) => this.playVaultAudio(filePath)
     );
 
     this.registerView(
@@ -64,6 +65,21 @@ export default class FocusCalendarPlugin extends Plugin {
         }
       })
     );
+  }
+
+  async playVaultAudio(filePath: string) {
+    try {
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof TFile) {
+        const resourcePath = this.app.vault.getResourcePath(file);
+        const audio = new Audio(resourcePath);
+        await audio.play();
+      } else {
+        console.warn(`Focus Calendar: Sound file not found at path: ${filePath}`);
+      }
+    } catch (err) {
+      console.error('Focus Calendar: Failed to play audio file from vault', err);
+    }
   }
 
   async activateView() {

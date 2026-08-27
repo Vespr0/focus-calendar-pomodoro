@@ -32,13 +32,20 @@ export interface FocusCalendarSettings {
   breakDurationMinutes: number; // default 10
   dataDirectory: string; // default "CalendarData"
   autoStartBreak: boolean;
+  soundFilePath: string; // Vault relative path to MP3, e.g. "" (disabled by default)
 }
 
 export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
   dataDirectory: 'CalendarData',
-  autoStartBreak: false
+  autoStartBreak: false,
+  soundFilePath: ''
 };
 
 export type ViewMode = 'month' | 'week';
+
+export interface ImminentEventInfo {
+  title: string;
+  daysAway: number;
+}

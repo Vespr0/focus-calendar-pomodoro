@@ -1,0 +1,6 @@
+{
+  "workDurationMinutes": 1,
+  "breakDurationMinutes": 10,
+  "dataDirectory": "CalendarData",
+  "autoStartBreak": true
+}
