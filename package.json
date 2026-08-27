@@ -1,0 +1,20 @@
+{
+  "name": "focus-calendar-pomodoro",
+  "version": "1.0.0",
+  "description": "Visual grid calendar with integrated Pomodoro timer, task focus tracking, and Syncthing-friendly vault storage.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "keywords": ["obsidian", "obsidian-plugin", "calendar", "pomodoro", "time-tracking", "schedule"],
+  "author": "Andrea",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "^1.5.7",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  }
+}
