@@ -182,6 +182,7 @@ export class FocusCalendarView extends ItemView {
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
+        this.buildDailyHoursMap(),
         {
           onDayClick: async (dateIso) => {
             this.currentDate = new Date(dateIso + 'T12:00:00');
@@ -201,6 +202,17 @@ export class FocusCalendarView extends ItemView {
     if (this.headerComponent) {
       this.headerComponent.update(this.viewMode, this.calculateTotalHours());
     }
+  }
+
+  private buildDailyHoursMap(): Map<string, number> {
+    const map = new Map<string, number>();
+    this.pomoLogs.forEach(log => {
+      if (log.type === 'work' && log.date) {
+        const current = map.get(log.date) || 0;
+        map.set(log.date, current + (log.durationSeconds / 3600));
+      }
+    });
+    return map;
   }
 
   private calculateTotalHours(): number {

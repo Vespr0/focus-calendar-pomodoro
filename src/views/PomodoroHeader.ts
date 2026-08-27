@@ -37,23 +37,19 @@ export class PomodoroHeaderComponent {
 
     const state = this.pomodoroManager.getState();
 
-    // IF MONTH VIEW: View only, hide pomodoro timer. Render statistics banner.
+    // IF MONTH VIEW: View only, hide pomodoro timer ring. Display monthly studied hours card.
     if (this.viewMode === 'month') {
       const statsBanner = this.containerEl.createDiv('fcp-month-stats-banner');
       statsBanner.innerHTML = `
-        <div class="fcp-month-overview-info">
-          <span class="fcp-overview-badge">MONTHLY OVERVIEW</span>
-          <span class="fcp-overview-desc">Events view for big-picture planning & milestones</span>
-        </div>
         <div class="fcp-hours-card month-card">
-          <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">hrs</span></div>
-          <div class="fcp-hours-sub">MONTHLY STUDIED HOURS</div>
+          <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+          <div class="fcp-hours-sub">THIS MONTH</div>
         </div>
       `;
       return;
     }
 
-    // WEEK VIEW: Radial Pomodoro Timer + Controls & Weekly Hours (no redundant focus box)
+    // WEEK VIEW: Radial Pomodoro Timer + Controls & Weekly Hours
     const isWork = state.mode === 'work';
     const accentColor = isWork ? 'var(--fcp-red-accent, #ef4444)' : 'var(--fcp-blue-accent, #3b82f6)';
     const modeLabel = isWork ? 'WORK SESSION' : 'BREAK TIME';
@@ -134,8 +130,8 @@ export class PomodoroHeaderComponent {
     const hoursCard = rightSection.createDiv('fcp-hours-card');
     
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">hrs</span></div>
-      <div class="fcp-hours-sub">WEEKLY STUDIED HOURS</div>
+      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-sub">THIS WEEK</div>
     `;
   }
 }

@@ -10,6 +10,7 @@ export class MonthViewRenderComponent {
   private currentYear: number;
   private currentMonth: number; // 0-indexed (0 = Jan, 11 = Dec)
   private entries: CalendarEntry[];
+  private dailyHoursMap: Map<string, number>;
   private callbacks: MonthViewCallbacks;
 
   constructor(
@@ -17,20 +18,23 @@ export class MonthViewRenderComponent {
     year: number,
     month: number,
     entries: CalendarEntry[],
+    dailyHoursMap: Map<string, number>,
     callbacks: MonthViewCallbacks
   ) {
     this.containerEl = containerEl;
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.dailyHoursMap = dailyHoursMap;
     this.callbacks = callbacks;
     this.render();
   }
 
-  public update(year: number, month: number, entries: CalendarEntry[]) {
+  public update(year: number, month: number, entries: CalendarEntry[], dailyHoursMap: Map<string, number>) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.dailyHoursMap = dailyHoursMap;
     this.render();
   }
 
@@ -81,6 +85,15 @@ export class MonthViewRenderComponent {
 
       const cellEl = monthGrid.createDiv(`fcp-month-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'is-today' : ''}`);
 
+      // Heatmap coloring based on work hours (max intensity at 8 hours)
+      const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
+      if (dailyHours > 0) {
+        const intensity = Math.min(1, dailyHours / 8);
+        const alpha = 0.12 + (intensity * 0.58);
+        cellEl.style.backgroundColor = `rgba(59, 130, 246, ${alpha.toFixed(2)})`;
+        cellEl.style.borderColor = `rgba(59, 130, 246, ${(alpha + 0.2).toFixed(2)})`;
+      }
+
       const cellHeader = cellEl.createDiv('fcp-month-cell-header');
       cellHeader.textContent = dayNumber.toString();
 
@@ -105,6 +118,13 @@ export class MonthViewRenderComponent {
             this.callbacks.onEventClick(evt);
           });
         });
+      }
+
+      // Display actual studied hours in bottom right corner of day cell
+      if (dailyHours > 0) {
+        const hoursTag = cellEl.createDiv('fcp-month-day-hours');
+        const formattedHours = dailyHours % 1 === 0 ? `${dailyHours} Hrs` : `${dailyHours.toFixed(1)} Hrs`;
+        hoursTag.textContent = formattedHours;
       }
     }
   }

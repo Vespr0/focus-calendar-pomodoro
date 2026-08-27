@@ -414,13 +414,9 @@ var PomodoroHeaderComponent = class {
     if (this.viewMode === "month") {
       const statsBanner = this.containerEl.createDiv("fcp-month-stats-banner");
       statsBanner.innerHTML = `
-        <div class="fcp-month-overview-info">
-          <span class="fcp-overview-badge">MONTHLY OVERVIEW</span>
-          <span class="fcp-overview-desc">Events view for big-picture planning & milestones</span>
-        </div>
         <div class="fcp-hours-card month-card">
-          <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">hrs</span></div>
-          <div class="fcp-hours-sub">MONTHLY STUDIED HOURS</div>
+          <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+          <div class="fcp-hours-sub">THIS MONTH</div>
         </div>
       `;
       return;
@@ -485,8 +481,8 @@ var PomodoroHeaderComponent = class {
     const rightSection = this.containerEl.createDiv("fcp-pomo-right");
     const hoursCard = rightSection.createDiv("fcp-hours-card");
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">hrs</span></div>
-      <div class="fcp-hours-sub">WEEKLY STUDIED HOURS</div>
+      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-sub">THIS WEEK</div>
     `;
   }
 };
@@ -781,18 +777,20 @@ var WeekViewRenderComponent = class {
 
 // src/views/MonthViewRender.ts
 var MonthViewRenderComponent = class {
-  constructor(containerEl, year, month, entries, callbacks) {
+  constructor(containerEl, year, month, entries, dailyHoursMap, callbacks) {
     this.containerEl = containerEl;
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.dailyHoursMap = dailyHoursMap;
     this.callbacks = callbacks;
     this.render();
   }
-  update(year, month, entries) {
+  update(year, month, entries, dailyHoursMap) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.dailyHoursMap = dailyHoursMap;
     this.render();
   }
   render() {
@@ -832,6 +830,13 @@ var MonthViewRenderComponent = class {
       const isToday = cellIso === todayIso;
       const isOtherMonth = monthOffset !== 0;
       const cellEl = monthGrid.createDiv(`fcp-month-cell ${isOtherMonth ? "other-month" : ""} ${isToday ? "is-today" : ""}`);
+      const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
+      if (dailyHours > 0) {
+        const intensity = Math.min(1, dailyHours / 8);
+        const alpha = 0.12 + intensity * 0.58;
+        cellEl.style.backgroundColor = `rgba(59, 130, 246, ${alpha.toFixed(2)})`;
+        cellEl.style.borderColor = `rgba(59, 130, 246, ${(alpha + 0.2).toFixed(2)})`;
+      }
       const cellHeader = cellEl.createDiv("fcp-month-cell-header");
       cellHeader.textContent = dayNumber.toString();
       cellEl.addEventListener("click", (e) => {
@@ -853,6 +858,11 @@ var MonthViewRenderComponent = class {
             this.callbacks.onEventClick(evt);
           });
         });
+      }
+      if (dailyHours > 0) {
+        const hoursTag = cellEl.createDiv("fcp-month-day-hours");
+        const formattedHours = dailyHours % 1 === 0 ? `${dailyHours} Hrs` : `${dailyHours.toFixed(1)} Hrs`;
+        hoursTag.textContent = formattedHours;
       }
     }
   }
@@ -1020,6 +1030,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
+        this.buildDailyHoursMap(),
         {
           onDayClick: async (dateIso) => {
             this.currentDate = /* @__PURE__ */ new Date(dateIso + "T12:00:00");
@@ -1038,6 +1049,16 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     if (this.headerComponent) {
       this.headerComponent.update(this.viewMode, this.calculateTotalHours());
     }
+  }
+  buildDailyHoursMap() {
+    const map = /* @__PURE__ */ new Map();
+    this.pomoLogs.forEach((log) => {
+      if (log.type === "work" && log.date) {
+        const current = map.get(log.date) || 0;
+        map.set(log.date, current + log.durationSeconds / 3600);
+      }
+    });
+    return map;
   }
   calculateTotalHours() {
     let totalSeconds = 0;
