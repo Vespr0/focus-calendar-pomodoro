@@ -1,4 +1,4 @@
-import { CalendarEntry } from '../types';
+import { CalendarEntry, PomodoroLogSession } from '../types';
 
 export interface MonthViewCallbacks {
   onDayClick: (dateIso: string) => void;
@@ -10,6 +10,7 @@ export class MonthViewRenderComponent {
   private currentYear: number;
   private currentMonth: number; // 0-indexed (0 = Jan, 11 = Dec)
   private entries: CalendarEntry[];
+  private pomoLogs: PomodoroLogSession[];
   private dailyHoursMap: Map<string, number>;
   private callbacks: MonthViewCallbacks;
 
@@ -18,6 +19,7 @@ export class MonthViewRenderComponent {
     year: number,
     month: number,
     entries: CalendarEntry[],
+    pomoLogs: PomodoroLogSession[],
     dailyHoursMap: Map<string, number>,
     callbacks: MonthViewCallbacks
   ) {
@@ -25,15 +27,23 @@ export class MonthViewRenderComponent {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
     this.callbacks = callbacks;
     this.render();
   }
 
-  public update(year: number, month: number, entries: CalendarEntry[], dailyHoursMap: Map<string, number>) {
+  public update(
+    year: number,
+    month: number,
+    entries: CalendarEntry[],
+    pomoLogs: PomodoroLogSession[],
+    dailyHoursMap: Map<string, number>
+  ) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
     this.render();
   }
@@ -141,7 +151,7 @@ export class MonthViewRenderComponent {
       }
     }
 
-    // --- Right Panel: Monthly Activity Breakdown Column ---
+    // --- Right Panel: Monthly Actual Focus Time Breakdown ---
     this.renderBreakdownPanel(layoutContainer);
 
     setTimeout(() => {
@@ -157,41 +167,49 @@ export class MonthViewRenderComponent {
   private renderBreakdownPanel(parentEl: HTMLElement) {
     const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}`;
     
-    // Group all entries/activities for the current month case-insensitively
-    const activityMap: Map<string, { displayTitle: string; totalHours: number; color: string }> = new Map();
-    let grandTotalHours = 0;
+    // Group all actual focus time logs for current month case-insensitively
+    const activityMap: Map<string, { displayTitle: string; totalSeconds: number; color: string }> = new Map();
+    let grandTotalSeconds = 0;
 
-    this.entries.forEach(entry => {
-      if (!entry.date.startsWith(monthPrefix)) return;
-      const title = (entry.title || 'General').trim();
+    this.pomoLogs.forEach(log => {
+      if (log.type !== 'work' || !log.date || !log.date.startsWith(monthPrefix)) return;
+      const title = (log.taskTitle || 'General Focus').trim();
       const normKey = title.toLowerCase();
-      const hours = entry.durationMinutes ? entry.durationMinutes / 60 : 0.5;
+      const secs = log.durationSeconds || 0;
+      if (secs <= 0) return;
 
-      grandTotalHours += hours;
+      grandTotalSeconds += secs;
 
       if (activityMap.has(normKey)) {
-        activityMap.get(normKey)!.totalHours += hours;
+        activityMap.get(normKey)!.totalSeconds += secs;
       } else {
         activityMap.set(normKey, {
           displayTitle: title,
-          totalHours: hours,
+          totalSeconds: secs,
           color: this.getTaskColor(title)
         });
       }
     });
 
-    const activities = Array.from(activityMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+    const grandTotalHours = grandTotalSeconds / 3600;
+    const activities = Array.from(activityMap.values())
+      .map(act => ({
+        displayTitle: act.displayTitle,
+        totalHours: act.totalSeconds / 3600,
+        color: act.color
+      }))
+      .sort((a, b) => b.totalHours - a.totalHours);
 
     const breakdownPanel = parentEl.createDiv('fcp-month-breakdown-panel');
     const header = breakdownPanel.createDiv('fcp-breakdown-header');
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Monthly Breakdown</div>
-      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Hrs</div>
+      <div class="fcp-breakdown-title">Actual Focus Time</div>
+      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Focus Hrs</div>
     `;
 
-    if (activities.length === 0 || grandTotalHours === 0) {
+    if (activities.length === 0 || grandTotalSeconds === 0) {
       const emptyMsg = breakdownPanel.createDiv('fcp-breakdown-empty');
-      emptyMsg.textContent = 'No work recorded this month.';
+      emptyMsg.textContent = 'No actual focus time recorded this month.';
       return;
     }
 
@@ -199,7 +217,7 @@ export class MonthViewRenderComponent {
     const barContainer = breakdownPanel.createDiv('fcp-stacked-bar');
 
     activities.forEach(act => {
-      const pct = (act.totalHours / grandTotalHours) * 100;
+      const pct = (act.totalHours / (grandTotalHours || 1)) * 100;
       const segment = barContainer.createDiv('fcp-stacked-segment');
       segment.style.backgroundColor = act.color;
       segment.style.flex = `${pct}`;
@@ -209,7 +227,7 @@ export class MonthViewRenderComponent {
     // Legend List
     const legend = breakdownPanel.createDiv('fcp-breakdown-legend');
     activities.forEach(act => {
-      const pct = (act.totalHours / grandTotalHours) * 100;
+      const pct = (act.totalHours / (grandTotalHours || 1)) * 100;
       const item = legend.createDiv('fcp-legend-item');
       item.innerHTML = `
         <div class="fcp-legend-left">

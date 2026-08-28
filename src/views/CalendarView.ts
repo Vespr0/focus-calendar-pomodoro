@@ -177,6 +177,7 @@ export class FocusCalendarView extends ItemView {
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
+        this.pomoLogs,
         this.buildDailyHoursMap(),
         {
           onDayClick: async (dateIso) => {

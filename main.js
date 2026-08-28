@@ -895,19 +895,21 @@ var WeekViewRenderComponent = class {
 
 // src/views/MonthViewRender.ts
 var MonthViewRenderComponent = class {
-  constructor(containerEl, year, month, entries, dailyHoursMap, callbacks) {
+  constructor(containerEl, year, month, entries, pomoLogs, dailyHoursMap, callbacks) {
     this.containerEl = containerEl;
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
     this.callbacks = callbacks;
     this.render();
   }
-  update(year, month, entries, dailyHoursMap) {
+  update(year, month, entries, pomoLogs, dailyHoursMap) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
+    this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
     this.render();
   }
@@ -1007,39 +1009,46 @@ var MonthViewRenderComponent = class {
   renderBreakdownPanel(parentEl) {
     const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, "0")}`;
     const activityMap = /* @__PURE__ */ new Map();
-    let grandTotalHours = 0;
-    this.entries.forEach((entry) => {
-      if (!entry.date.startsWith(monthPrefix))
+    let grandTotalSeconds = 0;
+    this.pomoLogs.forEach((log) => {
+      if (log.type !== "work" || !log.date || !log.date.startsWith(monthPrefix))
         return;
-      const title = (entry.title || "General").trim();
+      const title = (log.taskTitle || "General Focus").trim();
       const normKey = title.toLowerCase();
-      const hours = entry.durationMinutes ? entry.durationMinutes / 60 : 0.5;
-      grandTotalHours += hours;
+      const secs = log.durationSeconds || 0;
+      if (secs <= 0)
+        return;
+      grandTotalSeconds += secs;
       if (activityMap.has(normKey)) {
-        activityMap.get(normKey).totalHours += hours;
+        activityMap.get(normKey).totalSeconds += secs;
       } else {
         activityMap.set(normKey, {
           displayTitle: title,
-          totalHours: hours,
+          totalSeconds: secs,
           color: this.getTaskColor(title)
         });
       }
     });
-    const activities = Array.from(activityMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+    const grandTotalHours = grandTotalSeconds / 3600;
+    const activities = Array.from(activityMap.values()).map((act) => ({
+      displayTitle: act.displayTitle,
+      totalHours: act.totalSeconds / 3600,
+      color: act.color
+    })).sort((a, b) => b.totalHours - a.totalHours);
     const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
     const header = breakdownPanel.createDiv("fcp-breakdown-header");
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Monthly Breakdown</div>
-      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Hrs</div>
+      <div class="fcp-breakdown-title">Actual Focus Time</div>
+      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Focus Hrs</div>
     `;
-    if (activities.length === 0 || grandTotalHours === 0) {
+    if (activities.length === 0 || grandTotalSeconds === 0) {
       const emptyMsg = breakdownPanel.createDiv("fcp-breakdown-empty");
-      emptyMsg.textContent = "No work recorded this month.";
+      emptyMsg.textContent = "No actual focus time recorded this month.";
       return;
     }
     const barContainer = breakdownPanel.createDiv("fcp-stacked-bar");
     activities.forEach((act) => {
-      const pct = act.totalHours / grandTotalHours * 100;
+      const pct = act.totalHours / (grandTotalHours || 1) * 100;
       const segment = barContainer.createDiv("fcp-stacked-segment");
       segment.style.backgroundColor = act.color;
       segment.style.flex = `${pct}`;
@@ -1047,7 +1056,7 @@ var MonthViewRenderComponent = class {
     });
     const legend = breakdownPanel.createDiv("fcp-breakdown-legend");
     activities.forEach((act) => {
-      const pct = act.totalHours / grandTotalHours * 100;
+      const pct = act.totalHours / (grandTotalHours || 1) * 100;
       const item = legend.createDiv("fcp-legend-item");
       item.innerHTML = `
         <div class="fcp-legend-left">
@@ -1220,6 +1229,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
+        this.pomoLogs,
         this.buildDailyHoursMap(),
         {
           onDayClick: async (dateIso) => {
