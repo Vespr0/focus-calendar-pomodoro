@@ -203,7 +203,7 @@ export class MonthViewRenderComponent {
     const breakdownPanel = parentEl.createDiv('fcp-month-breakdown-panel');
     const header = breakdownPanel.createDiv('fcp-breakdown-header');
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Monthly Focus</div>
+      <div class="fcp-breakdown-title">Statistics</div>
       <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
     `;
 
