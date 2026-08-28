@@ -56,6 +56,7 @@ export default class FocusCalendarPlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
+        if (this.storage && this.storage.isLocalSaving) return;
         if (file.path.startsWith(this.settings.dataDirectory) && file.path.endsWith('.json')) {
           this.app.workspace.getLeavesOfType(VIEW_TYPE_FOCUS_CALENDAR).forEach(leaf => {
             if (leaf.view instanceof FocusCalendarView) {

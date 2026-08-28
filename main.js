@@ -453,7 +453,7 @@ var PomodoroHeaderComponent = class {
     const state = this.pomodoroManager.getState();
     const isWork = state.mode === "work";
     const accentColor = isWork ? "var(--fcp-red-accent, #ef4444)" : "var(--fcp-blue-accent, #3b82f6)";
-    const modeLabel = isWork ? "WORK SESSION" : "BREAK TIME";
+    const modeLabel = isWork ? "WORK" : "BREAK";
     this.containerEl.createDiv("fcp-pomo-left-spacer");
     const centerSection = this.containerEl.createDiv("fcp-pomo-center");
     const svgSize = 64;
@@ -526,9 +526,9 @@ var PomodoroHeaderComponent = class {
 // src/views/WeekViewRender.ts
 var import_obsidian2 = require("obsidian");
 var WeekViewRenderComponent = class {
-  // pixels per hour
+  // pixels per 30 minutes (52 / 2)
   constructor(containerEl, weekStart, entries, callbacks) {
-    // Constants
+    // Constants for 30-minute precision snapping
     this.startHour = 5;
     // 05:00
     this.endHour = 24;
@@ -536,6 +536,8 @@ var WeekViewRenderComponent = class {
     this.totalHours = 19;
     // 5..24
     this.hourHeight = 52;
+    // pixels per hour
+    this.slotHeight = 26;
     this.containerEl = containerEl;
     this.weekStart = weekStart;
     this.entries = entries;
@@ -585,7 +587,10 @@ var WeekViewRenderComponent = class {
     for (let h = 0; h < this.totalHours; h++) {
       const line = gridLines.createDiv("fcp-grid-line");
       line.style.top = `${h * this.hourHeight}px`;
-      line.style.height = `${this.hourHeight}px`;
+      line.style.height = `${this.slotHeight}px`;
+      const halfLine = gridLines.createDiv("fcp-grid-line-half");
+      halfLine.style.top = `${(h + 0.5) * this.hourHeight}px`;
+      halfLine.style.height = `${this.slotHeight}px`;
     }
     weekDates.forEach((date, colIndex) => {
       const dateStr = this.formatDateIso(date);
@@ -597,10 +602,11 @@ var WeekViewRenderComponent = class {
           return;
         const rect = colEl.getBoundingClientRect();
         const offsetY = e.clientY - rect.top;
-        const totalMinutesFromStart = Math.floor(offsetY / (this.totalHours * this.hourHeight) * (this.totalHours * 60));
-        const roundedMinutes = Math.floor(totalMinutesFromStart / 15) * 15;
-        const startMinutes = this.startHour * 60 + Math.max(0, Math.min(roundedMinutes, this.endHour * 60 - 60));
-        const endMinutes = Math.min(startMinutes + 60, this.endHour * 60);
+        const slotIndex = Math.floor(offsetY / this.slotHeight);
+        const maxSlots = this.totalHours * 2;
+        const clampedSlot = Math.max(0, Math.min(slotIndex, maxSlots - 1));
+        const startMinutes = this.startHour * 60 + clampedSlot * 30;
+        const endMinutes = Math.min(startMinutes + 30, this.endHour * 60);
         const startTime = this.minutesToTimeStr(startMinutes);
         const endTime = this.minutesToTimeStr(endMinutes);
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
@@ -622,16 +628,23 @@ var WeekViewRenderComponent = class {
     }, 0);
   }
   renderEntryCard(columnEl, entry) {
-    const startMins = this.timeStrToMinutes(entry.startTime);
-    const endMins = this.timeStrToMinutes(entry.endTime);
+    const startMins = this.snapTo30Min(this.timeStrToMinutes(entry.startTime));
+    let endMins = this.snapTo30Min(this.timeStrToMinutes(entry.endTime));
+    if (endMins <= startMins) {
+      endMins = startMins + 30;
+    }
+    entry.startTime = this.minutesToTimeStr(startMins);
+    entry.endTime = this.minutesToTimeStr(endMins);
     const minStartScale = this.startHour * 60;
     const maxEndScale = this.endHour * 60;
     const clampedStart = Math.max(minStartScale, Math.min(startMins, maxEndScale));
-    const clampedEnd = Math.max(clampedStart + 15, Math.min(endMins, maxEndScale));
-    const topPx = (clampedStart - minStartScale) / 60 * this.hourHeight;
-    const heightPx = Math.max(24, (clampedEnd - clampedStart) / 60 * this.hourHeight);
+    const clampedEnd = Math.max(clampedStart + 30, Math.min(endMins, maxEndScale));
+    const topPx = Math.round((clampedStart - minStartScale) / 30) * this.slotHeight;
+    const durationSlots = Math.max(1, Math.round((clampedEnd - clampedStart) / 30));
+    const heightPx = durationSlots * this.slotHeight;
     const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
-    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? "is-focused" : ""}`);
+    const isShort = durationSlots <= 1;
+    const card = columnEl.createDiv(`fcp-entry-card type-${entry.type} ${isFocused ? "is-focused" : ""} ${isShort ? "is-short" : ""}`);
     card.style.top = `${topPx}px`;
     card.style.height = `${heightPx}px`;
     card.dataset.id = entry.id;
@@ -699,10 +712,12 @@ var WeekViewRenderComponent = class {
     input.className = "fcp-inline-input";
     input.value = entry.title || "";
     content.appendChild(input);
-    requestAnimationFrame(() => {
+    let isReady = false;
+    setTimeout(() => {
+      isReady = true;
       input.focus();
       input.select();
-    });
+    }, 100);
     let isFinished = false;
     const finishEdit = async (cancelled) => {
       if (isFinished)
@@ -710,7 +725,7 @@ var WeekViewRenderComponent = class {
       isFinished = true;
       card.removeClass("is-editing");
       if (!cancelled) {
-        const newTitle = input.value.trim() || "New Entry";
+        const newTitle = input.value.trim() || "New Task";
         entry.title = newTitle;
         await this.callbacks.onEntryUpdate(entry);
       }
@@ -719,26 +734,36 @@ var WeekViewRenderComponent = class {
         <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
       `;
     };
-    input.addEventListener("blur", () => finishEdit(false));
+    input.addEventListener("blur", () => {
+      if (!isReady)
+        return;
+      finishEdit(false);
+    });
     input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
       if (e.key === "Enter") {
         e.preventDefault();
-        input.blur();
+        finishEdit(false);
       } else if (e.key === "Escape") {
         e.preventDefault();
         finishEdit(true);
       }
     });
+    input.addEventListener("keyup", (e) => e.stopPropagation());
+    input.addEventListener("keypress", (e) => e.stopPropagation());
     input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("mouseup", (e) => e.stopPropagation());
     input.addEventListener("click", (e) => e.stopPropagation());
     input.addEventListener("dblclick", (e) => e.stopPropagation());
   }
   setupCardDrag(card, entry) {
     let isDragging = false;
+    let hasMoved = false;
     let dragMode = "move";
     let startY = 0;
     let startTop = 0;
     let startHeight = 0;
+    const maxGridHeight = this.totalHours * this.hourHeight;
     const onMouseDown = (e) => {
       if (e.button !== 0 || card.classList.contains("is-editing"))
         return;
@@ -751,9 +776,10 @@ var WeekViewRenderComponent = class {
         dragMode = "move";
       }
       isDragging = true;
+      hasMoved = false;
       startY = e.clientY;
       startTop = parseFloat(card.style.top) || 0;
-      startHeight = parseFloat(card.style.height) || 40;
+      startHeight = parseFloat(card.style.height) || this.slotHeight;
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     };
@@ -761,37 +787,74 @@ var WeekViewRenderComponent = class {
       if (!isDragging)
         return;
       const deltaY = e.clientY - startY;
+      if (Math.abs(deltaY) > 3) {
+        hasMoved = true;
+        card.addClass("is-dragging");
+      }
+      const columnsContainer = this.containerEl.querySelector(".fcp-columns-container");
       if (dragMode === "move") {
-        const newTop = Math.max(0, Math.min(startTop + deltaY, this.totalHours * this.hourHeight - startHeight));
-        card.style.top = `${newTop}px`;
+        const rawTop = startTop + deltaY;
+        const snappedTop = Math.max(0, Math.min(Math.round(rawTop / this.slotHeight) * this.slotHeight, maxGridHeight - startHeight));
+        card.style.top = `${snappedTop}px`;
+        if (columnsContainer) {
+          const rect = columnsContainer.getBoundingClientRect();
+          const colWidth = rect.width / 7;
+          const relX = e.clientX - rect.left;
+          const targetColIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
+          const targetColEl = columnsContainer.querySelector(`.fcp-day-column[data-col-index="${targetColIndex}"]`);
+          if (targetColEl && card.parentElement !== targetColEl) {
+            targetColEl.appendChild(card);
+            hasMoved = true;
+          }
+        }
       } else if (dragMode === "resize-top") {
-        const newTop = Math.max(0, Math.min(startTop + deltaY, startTop + startHeight - 20));
-        const newHeight = startHeight + (startTop - newTop);
-        card.style.top = `${newTop}px`;
-        card.style.height = `${newHeight}px`;
+        const rawTop = startTop + deltaY;
+        const snappedTop = Math.max(0, Math.min(Math.round(rawTop / this.slotHeight) * this.slotHeight, startTop + startHeight - this.slotHeight));
+        const snappedHeight = startHeight + (startTop - snappedTop);
+        card.style.top = `${snappedTop}px`;
+        card.style.height = `${snappedHeight}px`;
       } else if (dragMode === "resize-bottom") {
-        const newHeight = Math.max(20, Math.min(startHeight + deltaY, this.totalHours * this.hourHeight - startTop));
-        card.style.height = `${newHeight}px`;
+        const rawHeight = startHeight + deltaY;
+        const snappedHeight = Math.max(this.slotHeight, Math.min(Math.round(rawHeight / this.slotHeight) * this.slotHeight, maxGridHeight - startTop));
+        card.style.height = `${snappedHeight}px`;
+      }
+      if (hasMoved) {
+        const currentTop = parseFloat(card.style.top) || 0;
+        const currentHeight = parseFloat(card.style.height) || this.slotHeight;
+        if (currentHeight <= this.slotHeight) {
+          card.addClass("is-short");
+        } else {
+          card.removeClass("is-short");
+        }
+        const startMins = this.startHour * 60 + Math.round(currentTop / this.slotHeight) * 30;
+        const endMins = startMins + Math.round(currentHeight / this.slotHeight) * 30;
+        const timeDiv = card.querySelector(".fcp-entry-time");
+        if (timeDiv) {
+          timeDiv.textContent = `${this.minutesToTimeStr(startMins)} - ${this.minutesToTimeStr(endMins)}`;
+        }
       }
     };
     const onMouseUp = async (e) => {
       if (!isDragging)
         return;
       isDragging = false;
+      card.removeClass("is-dragging");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (!hasMoved)
+        return;
       const finalTop = parseFloat(card.style.top) || 0;
-      const finalHeight = parseFloat(card.style.height) || 40;
-      const minStartScale = this.startHour * 60;
-      const startMins = minStartScale + Math.round(finalTop / this.hourHeight * 60 / 15) * 15;
-      const durationMins = Math.max(15, Math.round(finalHeight / this.hourHeight * 60 / 15) * 15);
-      const endMins = Math.min(this.endHour * 60, startMins + durationMins);
+      const finalHeight = parseFloat(card.style.height) || this.slotHeight;
+      const startSlot = Math.round(finalTop / this.slotHeight);
+      const durationSlots = Math.max(1, Math.round(finalHeight / this.slotHeight));
+      const startMins = this.startHour * 60 + startSlot * 30;
+      const endMins = Math.min(this.endHour * 60, startMins + durationSlots * 30);
+      const targetColEl = card.closest(".fcp-day-column");
+      if (targetColEl && targetColEl.dataset.date) {
+        entry.date = targetColEl.dataset.date;
+      }
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
-      const timeDiv = card.querySelector(".fcp-entry-time");
-      if (timeDiv) {
-        timeDiv.textContent = `${entry.startTime} - ${entry.endTime}`;
-      }
       await this.callbacks.onEntryUpdate(entry);
     };
     card.addEventListener("mousedown", onMouseDown);
@@ -812,6 +875,9 @@ var WeekViewRenderComponent = class {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+  }
+  snapTo30Min(mins) {
+    return Math.round(mins / 30) * 30;
   }
   escapeHtml(str) {
     const div = document.createElement("div");
@@ -1065,7 +1131,6 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
           },
           onTaskFocus: (entry) => {
             this.pomodoro.setFocusedTask(entry);
-            new import_obsidian3.Notice(`Focused on task: ${entry.title || "Untitled"}`);
           },
           getFocusedTaskId: () => {
             var _a;
@@ -1088,7 +1153,6 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
             this.renderView();
           },
           onEventClick: (entry) => {
-            new import_obsidian3.Notice(`Event: ${entry.title || "Untitled"}`);
           }
         }
       );
@@ -1246,6 +1310,8 @@ var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
     this.addSettingTab(new FocusCalendarSettingTab(this.app, this));
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
+        if (this.storage && this.storage.isLocalSaving)
+          return;
         if (file.path.startsWith(this.settings.dataDirectory) && file.path.endsWith(".json")) {
           this.app.workspace.getLeavesOfType(VIEW_TYPE_FOCUS_CALENDAR).forEach((leaf) => {
             if (leaf.view instanceof FocusCalendarView) {

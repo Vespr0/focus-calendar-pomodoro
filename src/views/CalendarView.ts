@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { ViewMode, CalendarEntry, PomodoroLogSession, ImminentEventInfo } from '../types';
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
@@ -167,7 +167,6 @@ export class FocusCalendarView extends ItemView {
           },
           onTaskFocus: (entry) => {
             this.pomodoro.setFocusedTask(entry);
-            new Notice(`Focused on task: ${entry.title || 'Untitled'}`);
           },
           getFocusedTaskId: () => this.pomodoro.getFocusedTask()?.id
         }
@@ -187,7 +186,7 @@ export class FocusCalendarView extends ItemView {
             this.renderView();
           },
           onEventClick: (entry) => {
-            new Notice(`Event: ${entry.title || 'Untitled'}`);
+            // Event clicked
           }
         }
       );

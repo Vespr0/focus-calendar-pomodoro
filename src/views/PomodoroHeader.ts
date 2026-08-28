@@ -46,7 +46,7 @@ export class PomodoroHeaderComponent {
   private renderMonthHeader() {
     // Left: Imminent event notification
     const leftDiv = this.containerEl.createDiv('fcp-pomo-left-imminent');
-    
+
     if (this.imminentEvent) {
       let daysStr = '';
       if (this.imminentEvent.daysAway === 0) {
@@ -68,7 +68,7 @@ export class PomodoroHeaderComponent {
     // Right: Monthly Studied Hours Card
     const rightSection = this.containerEl.createDiv('fcp-pomo-right');
     const hoursCard = rightSection.createDiv('fcp-hours-card');
-    
+
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
       <div class="fcp-hours-sub">THIS MONTH</div>
@@ -79,7 +79,7 @@ export class PomodoroHeaderComponent {
     const state = this.pomodoroManager.getState();
     const isWork = state.mode === 'work';
     const accentColor = isWork ? 'var(--fcp-red-accent, #ef4444)' : 'var(--fcp-blue-accent, #3b82f6)';
-    const modeLabel = isWork ? 'WORK SESSION' : 'BREAK TIME';
+    const modeLabel = isWork ? 'WORK' : 'BREAK';
 
     // Left spacer to balance flex layout and center the pomodoro controls
     this.containerEl.createDiv('fcp-pomo-left-spacer');
@@ -106,16 +106,16 @@ export class PomodoroHeaderComponent {
     svgWrapper.innerHTML = `
       <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" class="fcp-radial-svg">
         <circle
-          cx="${svgSize/2}" cy="${svgSize/2}" r="${radius}"
+          cx="${svgSize / 2}" cy="${svgSize / 2}" r="${radius}"
           fill="none" stroke="var(--background-modifier-border)" stroke-width="${strokeWidth}"
         />
         <circle
-          cx="${svgSize/2}" cy="${svgSize/2}" r="${radius}"
+          cx="${svgSize / 2}" cy="${svgSize / 2}" r="${radius}"
           fill="none" stroke="${accentColor}" stroke-width="${strokeWidth}"
           stroke-linecap="round"
           stroke-dasharray="${circumference}"
           stroke-dashoffset="${strokeDashoffset}"
-          transform="rotate(-90 ${svgSize/2} ${svgSize/2})"
+          transform="rotate(-90 ${svgSize / 2} ${svgSize / 2})"
           style="transition: stroke-dashoffset 0.3s ease, stroke 0.3s ease;"
         />
       </svg>
@@ -124,7 +124,7 @@ export class PomodoroHeaderComponent {
 
     // Controls
     const controlsDiv = centerSection.createDiv('fcp-pomo-controls');
-    
+
     const modeBadge = controlsDiv.createDiv('fcp-mode-badge');
     modeBadge.textContent = modeLabel;
     modeBadge.style.color = accentColor;
@@ -158,7 +158,7 @@ export class PomodoroHeaderComponent {
     // Right section: Weekly Hours Card
     const rightSection = this.containerEl.createDiv('fcp-pomo-right');
     const hoursCard = rightSection.createDiv('fcp-hours-card');
-    
+
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
       <div class="fcp-hours-sub">THIS WEEK</div>
