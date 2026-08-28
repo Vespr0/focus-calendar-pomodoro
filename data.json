@@ -1,7 +1,9 @@
 {
-  "workDurationMinutes": 40,
-  "breakDurationMinutes": 10,
+  "workDurationMinutes": 1,
+  "breakDurationMinutes": 1,
   "dataDirectory": "calendar-data",
   "autoStartBreak": true,
-  "soundFilePath": ""
+  "soundFilePath": "",
+  "focusEndSoundPath": "sounds/break-time.wav",
+  "breakEndSoundPath": "sounds/break-over.wav"
 }

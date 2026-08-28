@@ -30,9 +30,11 @@ export interface PomodoroLogSession {
 export interface FocusCalendarSettings {
   workDurationMinutes: number; // default 40
   breakDurationMinutes: number; // default 10
-  dataDirectory: string; // default "CalendarData"
+  dataDirectory: string; // default "calendar-data"
   autoStartBreak: boolean;
-  soundFilePath: string; // Vault relative path to MP3, e.g. "" (disabled by default)
+  soundFilePath: string; // legacy fallback
+  focusEndSoundPath: string; // Vault relative path to MP3 when focus ends (e.g. "Sounds/bell.mp3")
+  breakEndSoundPath: string; // Vault relative path to MP3 when break ends (e.g. "Sounds/chime.mp3")
 }
 
 export const DEFAULT_SETTINGS: FocusCalendarSettings = {
@@ -40,7 +42,9 @@ export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   breakDurationMinutes: 10,
   dataDirectory: 'calendar-data',
   autoStartBreak: false,
-  soundFilePath: ''
+  soundFilePath: '',
+  focusEndSoundPath: '',
+  breakEndSoundPath: ''
 };
 
 export type ViewMode = 'month' | 'week';

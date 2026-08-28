@@ -168,10 +168,18 @@ export class PomodoroManager {
     this.flushWorkLog();
     const settings = this.settingsGetter();
 
-    // Play vault MP3 audio ONLY if explicitly specified in plugin settings
-    if (settings.soundFilePath && settings.soundFilePath.trim() !== '') {
-      if (this.playAudioCallback) {
-        this.playAudioCallback(settings.soundFilePath.trim());
+    const completedMode = this.mode;
+
+    // Play distinct MP3 sound for Focus completion vs Break completion
+    if (completedMode === 'work') {
+      const soundPath = (settings.focusEndSoundPath || settings.soundFilePath || '').trim();
+      if (soundPath !== '' && this.playAudioCallback) {
+        this.playAudioCallback(soundPath);
+      }
+    } else {
+      const soundPath = (settings.breakEndSoundPath || settings.soundFilePath || '').trim();
+      if (soundPath !== '' && this.playAudioCallback) {
+        this.playAudioCallback(soundPath);
       }
     }
 

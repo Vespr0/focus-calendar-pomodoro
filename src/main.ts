@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, TFile } from 'obsidian';
+import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { FocusCalendarView, VIEW_TYPE_FOCUS_CALENDAR } from './views/CalendarView';
 import { StorageManager } from './storage';
 import { PomodoroManager } from './pomodoro';
@@ -56,13 +56,13 @@ export default class FocusCalendarPlugin extends Plugin {
       (leaf) => new FocusCalendarView(leaf, this.storage, this.pomodoro)
     );
 
-    this.addRibbonIcon('calendar-clock', 'Open Focus Calendar & Pomodoro', () => {
+    this.addRibbonIcon('calendar-clock', 'Calendar & Focus', () => {
       this.activateView();
     });
 
     this.addCommand({
       id: 'open-focus-calendar-view',
-      name: 'Open Focus Calendar & Pomodoro View',
+      name: 'Open Calendar & Focus View',
       callback: () => {
         this.activateView();
       }
@@ -71,42 +71,43 @@ export default class FocusCalendarPlugin extends Plugin {
     this.addSettingTab(new FocusCalendarSettingTab(this.app, this));
 
     // Register inter-plugin workspace events
-    this.registerEvent(
-      (this.app.workspace as any).on('omnirecall:drill-complete', async (data: any) => {
-        // If Pomodoro auto-study session was running, it already logged elapsed time on pause
-        if (this.isAutoStarted) {
-          this.endAutoStudySession();
-          return;
-        }
-        const today = new Date().toISOString().substring(0, 10);
-        await this.storage.logPomodoroSession({
-          id: 'drill-' + Date.now(),
-          taskTitle: `[Drill] ${data.title || 'Exercise'}`,
-          type: 'work',
-          durationSeconds: data.timeSec || 0,
-          completedAt: Date.now(),
-          date: today
-        });
-      })
-    );
+    const handleDrillComplete = async (data: any) => {
+      // If Pomodoro auto-study session was running, it already logged elapsed time on pause
+      if (this.isAutoStarted) {
+        this.endAutoStudySession();
+        return;
+      }
+      const today = new Date().toISOString().substring(0, 10);
+      await this.storage.logPomodoroSession({
+        id: 'drill-' + Date.now(),
+        taskTitle: `[Drill] ${data.title || 'Exercise'}`,
+        type: 'work',
+        durationSeconds: data.timeSec || 0,
+        completedAt: Date.now(),
+        date: today
+      });
+    };
 
-    this.registerEvent(
-      (this.app.workspace as any).on('omnirecall:review-complete', async (data: any) => {
-        if (this.isAutoStarted) {
-          this.endAutoStudySession();
-          return;
-        }
-        const today = new Date().toISOString().substring(0, 10);
-        await this.storage.logPomodoroSession({
-          id: 'review-' + Date.now(),
-          taskTitle: `[Flashcards] ${data.title || 'Review Queue'}`,
-          type: 'work',
-          durationSeconds: data.timeSec || 0,
-          completedAt: Date.now(),
-          date: today
-        });
-      })
-    );
+    const handleReviewComplete = async (data: any) => {
+      if (this.isAutoStarted) {
+        this.endAutoStudySession();
+        return;
+      }
+      const today = new Date().toISOString().substring(0, 10);
+      await this.storage.logPomodoroSession({
+        id: 'review-' + Date.now(),
+        taskTitle: `[Flashcards] ${data.title || 'Review Queue'}`,
+        type: 'work',
+        durationSeconds: data.timeSec || 0,
+        completedAt: Date.now(),
+        date: today
+      });
+    };
+
+    this.registerEvent((this.app.workspace as any).on('spaced-repetition:drill-complete', handleDrillComplete));
+    this.registerEvent((this.app.workspace as any).on('omnirecall:drill-complete', handleDrillComplete));
+    this.registerEvent((this.app.workspace as any).on('spaced-repetition:review-complete', handleReviewComplete));
+    this.registerEvent((this.app.workspace as any).on('omnirecall:review-complete', handleReviewComplete));
 
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -162,18 +163,29 @@ export default class FocusCalendarPlugin extends Plugin {
     }
   }
 
-  async playVaultAudio(filePath: string) {
+  async playVaultAudio(filePath: string, showNoticeOnFail: boolean = false): Promise<boolean> {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
         const resourcePath = this.app.vault.getResourcePath(file);
         const audio = new Audio(resourcePath);
+        audio.volume = 0.5;
         await audio.play();
+        return true;
       } else {
-        console.warn(`Focus Calendar: Sound file not found at path: ${filePath}`);
+        const msg = `Focus Calendar: Sound file not found at path: "${filePath}"`;
+        console.warn(msg);
+        if (showNoticeOnFail) {
+          new Notice(`⚠️ ${msg}`, 4000);
+        }
+        return false;
       }
     } catch (err) {
       console.error('Focus Calendar: Failed to play audio file from vault', err);
+      if (showNoticeOnFail) {
+        new Notice(`❌ Failed to play audio file: ${filePath}`, 4000);
+      }
+      return false;
     }
   }
 

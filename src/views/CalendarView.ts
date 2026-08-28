@@ -33,7 +33,7 @@ export class FocusCalendarView extends ItemView {
   }
 
   public getDisplayText(): string {
-    return 'Focus Calendar & Pomodoro';
+    return 'Calendar & Focus';
   }
 
   public getIcon(): string {
