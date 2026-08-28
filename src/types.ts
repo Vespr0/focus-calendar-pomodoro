@@ -38,7 +38,7 @@ export interface FocusCalendarSettings {
 export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
-  dataDirectory: 'CalendarData',
+  dataDirectory: 'calendar-data',
   autoStartBreak: false,
   soundFilePath: ''
 };

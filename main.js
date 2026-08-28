@@ -34,7 +34,7 @@ var import_obsidian5 = require("obsidian");
 var DEFAULT_SETTINGS = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
-  dataDirectory: "CalendarData",
+  dataDirectory: "calendar-data",
   autoStartBreak: false,
   soundFilePath: ""
 };
@@ -48,7 +48,7 @@ var StorageManager = class {
     this.settingsGetter = settingsGetter;
   }
   get dataFolder() {
-    return (0, import_obsidian.normalizePath)(this.settingsGetter().dataDirectory || "CalendarData");
+    return (0, import_obsidian.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
   }
   async ensureDataFolderExists() {
     const folderPath = this.dataFolder;
@@ -61,7 +61,7 @@ var StorageManager = class {
     return (0, import_obsidian.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
   }
   getPomodoroLogFilePath(yearMonth) {
-    return (0, import_obsidian.normalizePath)(`${this.dataFolder}/pomodoro-logs-${yearMonth}.json`);
+    return (0, import_obsidian.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
   }
   async loadEntriesForMonth(yearMonth) {
     await this.ensureDataFolderExists();

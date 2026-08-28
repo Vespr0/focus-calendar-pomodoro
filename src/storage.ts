@@ -12,7 +12,7 @@ export class StorageManager {
   }
 
   private get dataFolder(): string {
-    return normalizePath(this.settingsGetter().dataDirectory || 'CalendarData');
+    return normalizePath(this.settingsGetter().dataDirectory || 'calendar-data');
   }
 
   private async ensureDataFolderExists(): Promise<void> {
@@ -28,7 +28,7 @@ export class StorageManager {
   }
 
   private getPomodoroLogFilePath(yearMonth: string): string {
-    return normalizePath(`${this.dataFolder}/pomodoro-logs-${yearMonth}.json`);
+    return normalizePath(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
   }
 
   public async loadEntriesForMonth(yearMonth: string): Promise<CalendarEntry[]> {
