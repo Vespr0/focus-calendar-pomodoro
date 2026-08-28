@@ -90,11 +90,13 @@ export class StorageManager {
       logs = [];
     }
 
-    const titleKey = (session.taskTitle || 'General Focus').trim().toLowerCase();
+    const rawTitle = (session.taskTitle || '').trim();
+    if (!rawTitle) return;
+    const titleKey = rawTitle.toLowerCase();
     const existingIdx = logs.findIndex(
       l => l.date === session.date &&
            l.type === session.type &&
-           (l.taskTitle || 'General Focus').trim().toLowerCase() === titleKey
+           (l.taskTitle || '').trim().toLowerCase() === titleKey
     );
 
     if (existingIdx >= 0) {
@@ -106,7 +108,7 @@ export class StorageManager {
       logs.push({
         id: cleanId,
         taskId: session.taskId,
-        taskTitle: session.taskTitle || 'General Focus',
+        taskTitle: rawTitle,
         type: session.type,
         durationSeconds: session.durationSeconds,
         completedAt: session.completedAt,

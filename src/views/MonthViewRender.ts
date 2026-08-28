@@ -89,7 +89,7 @@ export class MonthViewRenderComponent {
     for (let i = 0; i < totalCells; i++) {
       let dayNumber: number;
       let monthOffset = 0;
-      
+
       if (i < startDayOfWeek) {
         dayNumber = daysInPrevMonth - startDayOfWeek + i + 1;
         monthOffset = -1;
@@ -130,7 +130,7 @@ export class MonthViewRenderComponent {
 
       if (dayEvents.length > 0) {
         const eventsContainer = cellEl.createDiv('fcp-month-events-container');
-        
+
         dayEvents.forEach(evt => {
           const evtEl = eventsContainer.createDiv('fcp-month-event-item');
           evtEl.innerHTML = `
@@ -166,14 +166,15 @@ export class MonthViewRenderComponent {
 
   private renderBreakdownPanel(parentEl: HTMLElement) {
     const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}`;
-    
+
     // Group all actual focus time logs for current month case-insensitively
     const activityMap: Map<string, { displayTitle: string; totalSeconds: number; color: string }> = new Map();
     let grandTotalSeconds = 0;
 
     this.pomoLogs.forEach(log => {
       if (log.type !== 'work' || !log.date || !log.date.startsWith(monthPrefix)) return;
-      const title = (log.taskTitle || 'General Focus').trim();
+      const title = (log.taskTitle || '').trim();
+      if (!title || title.toLowerCase() === 'general focus') return;
       const normKey = title.toLowerCase();
       const secs = log.durationSeconds || 0;
       if (secs <= 0) return;
@@ -209,7 +210,7 @@ export class MonthViewRenderComponent {
 
     if (activities.length === 0 || grandTotalSeconds === 0) {
       const emptyMsg = breakdownPanel.createDiv('fcp-breakdown-empty');
-      emptyMsg.textContent = 'No actual focus time recorded this month.';
+      emptyMsg.textContent = 'No focus time recorded this month.';
       return;
     }
 

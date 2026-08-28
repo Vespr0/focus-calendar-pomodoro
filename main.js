@@ -655,7 +655,9 @@ var MonthViewRenderComponent = class {
     this.pomoLogs.forEach((log) => {
       if (log.type !== "work" || !log.date || !log.date.startsWith(monthPrefix))
         return;
-      const title = (log.taskTitle || "General Focus").trim();
+      const title = (log.taskTitle || "").trim();
+      if (!title || title.toLowerCase() === "general focus")
+        return;
       const normKey = title.toLowerCase();
       const secs = log.durationSeconds || 0;
       if (secs <= 0)
@@ -685,7 +687,7 @@ var MonthViewRenderComponent = class {
     `;
     if (activities.length === 0 || grandTotalSeconds === 0) {
       const emptyMsg = breakdownPanel.createDiv("fcp-breakdown-empty");
-      emptyMsg.textContent = "No actual focus time recorded this month.";
+      emptyMsg.textContent = "No focus time recorded this month.";
       return;
     }
     const barContainer = breakdownPanel.createDiv("fcp-stacked-bar");
@@ -1038,9 +1040,12 @@ var StorageManager = class {
     } catch (e) {
       logs = [];
     }
-    const titleKey = (session.taskTitle || "General Focus").trim().toLowerCase();
+    const rawTitle = (session.taskTitle || "").trim();
+    if (!rawTitle)
+      return;
+    const titleKey = rawTitle.toLowerCase();
     const existingIdx = logs.findIndex(
-      (l) => l.date === session.date && l.type === session.type && (l.taskTitle || "General Focus").trim().toLowerCase() === titleKey
+      (l) => l.date === session.date && l.type === session.type && (l.taskTitle || "").trim().toLowerCase() === titleKey
     );
     if (existingIdx >= 0) {
       logs[existingIdx].durationSeconds += session.durationSeconds;
@@ -1052,7 +1057,7 @@ var StorageManager = class {
       logs.push({
         id: cleanId,
         taskId: session.taskId,
-        taskTitle: session.taskTitle || "General Focus",
+        taskTitle: rawTitle,
         type: session.type,
         durationSeconds: session.durationSeconds,
         completedAt: session.completedAt,
@@ -1202,11 +1207,15 @@ var PomodoroManager = class {
   }
   flushWorkLog() {
     if (this.mode === "work" && this.activeWorkSecondsAccumulated > 0) {
+      if (!this.focusedTask || !this.focusedTask.title) {
+        this.activeWorkSecondsAccumulated = 0;
+        return;
+      }
       const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
       const session = {
         id: "session-" + Date.now(),
-        taskId: this.focusedTask ? this.focusedTask.id : void 0,
-        taskTitle: this.focusedTask ? this.focusedTask.title || "General Focus" : "General Focus",
+        taskId: this.focusedTask.id,
+        taskTitle: this.focusedTask.title,
         type: "work",
         durationSeconds: this.activeWorkSecondsAccumulated,
         completedAt: Date.now(),

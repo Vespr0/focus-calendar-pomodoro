@@ -144,11 +144,15 @@ export class PomodoroManager {
 
   private flushWorkLog() {
     if (this.mode === 'work' && this.activeWorkSecondsAccumulated > 0) {
+      if (!this.focusedTask || !this.focusedTask.title) {
+        this.activeWorkSecondsAccumulated = 0;
+        return;
+      }
       const today = new Date().toISOString().substring(0, 10);
       const session: PomodoroLogSession = {
         id: 'session-' + Date.now(),
-        taskId: this.focusedTask ? this.focusedTask.id : undefined,
-        taskTitle: this.focusedTask ? (this.focusedTask.title || 'General Focus') : 'General Focus',
+        taskId: this.focusedTask.id,
+        taskTitle: this.focusedTask.title,
         type: 'work',
         durationSeconds: this.activeWorkSecondsAccumulated,
         completedAt: Date.now(),
