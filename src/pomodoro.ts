@@ -18,6 +18,7 @@ export class PomodoroManager {
   private totalDurationSeconds: number = 40 * 60;
   private timerId: number | null = null;
   private focusedTask: CalendarEntry | null = null;
+  private activeWorkSecondsAccumulated: number = 0;
   private settingsGetter: () => FocusCalendarSettings;
   private onStateChange: (state: PomodoroState) => void;
   private onSessionComplete: (session: PomodoroLogSession) => void;
@@ -43,6 +44,10 @@ export class PomodoroManager {
     return this.settingsGetter();
   }
 
+  public getIsRunning(): boolean {
+    return this.isRunning;
+  }
+
   public getState(): PomodoroState {
     return {
       mode: this.mode,
@@ -54,6 +59,9 @@ export class PomodoroManager {
   }
 
   public setFocusedTask(task: CalendarEntry | null) {
+    if (this.isRunning) {
+      this.flushWorkLog();
+    }
     this.focusedTask = task;
     this.notifyState();
   }
@@ -81,6 +89,7 @@ export class PomodoroManager {
       clearInterval(this.timerId);
       this.timerId = null;
     }
+    this.flushWorkLog();
     this.notifyState();
   }
 
@@ -94,6 +103,7 @@ export class PomodoroManager {
 
   public resetTimer() {
     this.pause();
+    this.flushWorkLog();
     const settings = this.settingsGetter();
     if (this.mode === 'work') {
       this.totalDurationSeconds = (settings.workDurationMinutes || 40) * 60;
@@ -106,6 +116,7 @@ export class PomodoroManager {
 
   public switchMode(newMode?: PomodoroMode) {
     this.pause();
+    this.flushWorkLog();
     this.mode = newMode || (this.mode === 'work' ? 'break' : 'work');
     if (this.mode === 'break' && this.onBreakStartCallback) {
       this.onBreakStartCallback();
@@ -114,6 +125,9 @@ export class PomodoroManager {
   }
 
   private tick() {
+    if (this.mode === 'work') {
+      this.activeWorkSecondsAccumulated++;
+    }
     if (this.timeLeftSeconds > 0) {
       this.timeLeftSeconds--;
       this.notifyState();
@@ -122,22 +136,27 @@ export class PomodoroManager {
     }
   }
 
+  private flushWorkLog() {
+    if (this.mode === 'work' && this.activeWorkSecondsAccumulated > 0) {
+      const today = new Date().toISOString().substring(0, 10);
+      const session: PomodoroLogSession = {
+        id: 'session-' + Date.now(),
+        taskId: this.focusedTask ? this.focusedTask.id : undefined,
+        taskTitle: this.focusedTask ? (this.focusedTask.title || 'General Focus') : 'General Focus',
+        type: 'work',
+        durationSeconds: this.activeWorkSecondsAccumulated,
+        completedAt: Date.now(),
+        date: today
+      };
+      this.activeWorkSecondsAccumulated = 0;
+      this.onSessionComplete(session);
+    }
+  }
+
   private onCompleted() {
     this.pause();
+    this.flushWorkLog();
     const settings = this.settingsGetter();
-    const today = new Date().toISOString().substring(0, 10);
-    
-    const session: PomodoroLogSession = {
-      id: 'session-' + Date.now(),
-      taskId: this.focusedTask ? this.focusedTask.id : undefined,
-      taskTitle: this.focusedTask ? this.focusedTask.title : undefined,
-      type: this.mode,
-      durationSeconds: this.totalDurationSeconds,
-      completedAt: Date.now(),
-      date: today
-    };
-
-    this.onSessionComplete(session);
 
     // Play vault MP3 audio ONLY if explicitly specified in plugin settings
     if (settings.soundFilePath && settings.soundFilePath.trim() !== '') {

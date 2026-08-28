@@ -158,6 +158,7 @@ var PomodoroManager = class {
     this.totalDurationSeconds = 40 * 60;
     this.timerId = null;
     this.focusedTask = null;
+    this.activeWorkSecondsAccumulated = 0;
     this.settingsGetter = settingsGetter;
     this.onStateChange = onStateChange;
     this.onSessionComplete = onSessionComplete;
@@ -167,6 +168,9 @@ var PomodoroManager = class {
   }
   getSettings() {
     return this.settingsGetter();
+  }
+  getIsRunning() {
+    return this.isRunning;
   }
   getState() {
     return {
@@ -178,6 +182,9 @@ var PomodoroManager = class {
     };
   }
   setFocusedTask(task) {
+    if (this.isRunning) {
+      this.flushWorkLog();
+    }
     this.focusedTask = task;
     this.notifyState();
   }
@@ -204,6 +211,7 @@ var PomodoroManager = class {
       clearInterval(this.timerId);
       this.timerId = null;
     }
+    this.flushWorkLog();
     this.notifyState();
   }
   togglePlayPause() {
@@ -215,6 +223,7 @@ var PomodoroManager = class {
   }
   resetTimer() {
     this.pause();
+    this.flushWorkLog();
     const settings = this.settingsGetter();
     if (this.mode === "work") {
       this.totalDurationSeconds = (settings.workDurationMinutes || 40) * 60;
@@ -226,6 +235,7 @@ var PomodoroManager = class {
   }
   switchMode(newMode) {
     this.pause();
+    this.flushWorkLog();
     this.mode = newMode || (this.mode === "work" ? "break" : "work");
     if (this.mode === "break" && this.onBreakStartCallback) {
       this.onBreakStartCallback();
@@ -233,6 +243,9 @@ var PomodoroManager = class {
     this.resetTimer();
   }
   tick() {
+    if (this.mode === "work") {
+      this.activeWorkSecondsAccumulated++;
+    }
     if (this.timeLeftSeconds > 0) {
       this.timeLeftSeconds--;
       this.notifyState();
@@ -240,20 +253,26 @@ var PomodoroManager = class {
       this.onCompleted();
     }
   }
+  flushWorkLog() {
+    if (this.mode === "work" && this.activeWorkSecondsAccumulated > 0) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+      const session = {
+        id: "session-" + Date.now(),
+        taskId: this.focusedTask ? this.focusedTask.id : void 0,
+        taskTitle: this.focusedTask ? this.focusedTask.title || "General Focus" : "General Focus",
+        type: "work",
+        durationSeconds: this.activeWorkSecondsAccumulated,
+        completedAt: Date.now(),
+        date: today
+      };
+      this.activeWorkSecondsAccumulated = 0;
+      this.onSessionComplete(session);
+    }
+  }
   onCompleted() {
     this.pause();
+    this.flushWorkLog();
     const settings = this.settingsGetter();
-    const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
-    const session = {
-      id: "session-" + Date.now(),
-      taskId: this.focusedTask ? this.focusedTask.id : void 0,
-      taskTitle: this.focusedTask ? this.focusedTask.title : void 0,
-      type: this.mode,
-      durationSeconds: this.totalDurationSeconds,
-      completedAt: Date.now(),
-      date: today
-    };
-    this.onSessionComplete(session);
     if (settings.soundFilePath && settings.soundFilePath.trim() !== "") {
       if (this.playAudioCallback) {
         this.playAudioCallback(settings.soundFilePath.trim());
