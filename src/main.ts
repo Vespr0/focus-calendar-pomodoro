@@ -9,15 +9,24 @@ export default class FocusCalendarPlugin extends Plugin {
   settings: FocusCalendarSettings = DEFAULT_SETTINGS;
   storage!: StorageManager;
   pomodoro!: PomodoroManager;
+  statusBarItem!: HTMLElement;
+  private isAutoStarted: boolean = false;
 
   async onload() {
     await this.loadSettings();
 
     this.storage = new StorageManager(this.app, () => this.settings);
+    this.statusBarItem = this.addStatusBarItem();
+    this.statusBarItem.addClass('focus-calendar-status-bar');
+    this.statusBarItem.style.cursor = 'pointer';
+    this.statusBarItem.addEventListener('click', () => {
+      this.pomodoro.togglePlayPause();
+    });
 
     this.pomodoro = new PomodoroManager(
       () => this.settings,
       (state) => {
+        this.updateStatusBar(state);
         this.app.workspace.getLeavesOfType(VIEW_TYPE_FOCUS_CALENDAR).forEach(leaf => {
           if (leaf.view instanceof FocusCalendarView) {
             leaf.view.updateHeaderStats();
@@ -34,6 +43,8 @@ export default class FocusCalendarPlugin extends Plugin {
       },
       (filePath: string) => this.playVaultAudio(filePath)
     );
+
+    this.updateStatusBar(this.pomodoro.getState());
 
     this.registerView(
       VIEW_TYPE_FOCUS_CALENDAR,
@@ -54,6 +65,35 @@ export default class FocusCalendarPlugin extends Plugin {
 
     this.addSettingTab(new FocusCalendarSettingTab(this.app, this));
 
+    // Register inter-plugin workspace events
+    this.registerEvent(
+      (this.app.workspace as any).on('omnirecall:drill-complete', async (data: any) => {
+        const today = new Date().toISOString().substring(0, 10);
+        await this.storage.logPomodoroSession({
+          id: 'drill-' + Date.now(),
+          taskTitle: `[Drill] ${data.title || 'Exercise'}`,
+          type: 'work',
+          durationSeconds: data.timeSec || 0,
+          completedAt: Date.now(),
+          date: today
+        });
+      })
+    );
+
+    this.registerEvent(
+      (this.app.workspace as any).on('omnirecall:review-complete', async (data: any) => {
+        const today = new Date().toISOString().substring(0, 10);
+        await this.storage.logPomodoroSession({
+          id: 'review-' + Date.now(),
+          taskTitle: `[Flashcards] ${data.title || 'Review Queue'}`,
+          type: 'work',
+          durationSeconds: data.timeSec || 0,
+          completedAt: Date.now(),
+          date: today
+        });
+      })
+    );
+
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (this.storage && this.storage.isLocalSaving) return;
@@ -66,6 +106,46 @@ export default class FocusCalendarPlugin extends Plugin {
         }
       })
     );
+  }
+
+  private updateStatusBar(state: any) {
+    if (!this.statusBarItem) return;
+    const mins = Math.floor(state.timeLeftSeconds / 60);
+    const secs = state.timeLeftSeconds % 60;
+    const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const taskTitle = state.focusedTask ? state.focusedTask.title : state.mode.toUpperCase();
+    const statusIcon = state.isRunning ? '⏱️' : '⏸️';
+
+    this.statusBarItem.setText(`${statusIcon} ${timeFormatted} [${taskTitle}]`);
+  }
+
+  public startAutoStudySession(title: string): boolean {
+    const state = this.pomodoro.getState();
+    if (state.isRunning) {
+      return false; // Already running, passively attach
+    }
+
+    const today = new Date().toISOString().substring(0, 10);
+    this.pomodoro.setFocusedTask({
+      id: 'auto-' + Date.now(),
+      title,
+      date: today,
+      time: new Date().toTimeString().substring(0, 5),
+      durationMinutes: 40,
+      category: 'Study',
+      completed: false
+    });
+
+    this.isAutoStarted = true;
+    this.pomodoro.start();
+    return true;
+  }
+
+  public endAutoStudySession() {
+    if (this.isAutoStarted) {
+      this.pomodoro.pause();
+      this.isAutoStarted = false;
+    }
   }
 
   async playVaultAudio(filePath: string) {
