@@ -1,7 +1,7 @@
 {
   "id": "focus-calendar-pomodoro",
   "name": "Focus Calendar & Pomodoro",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.0.0",
   "description": "Visual grid calendar with integrated Pomodoro timer, task focus tracking, and Syncthing-friendly vault storage.",
   "author": "Andrea",
