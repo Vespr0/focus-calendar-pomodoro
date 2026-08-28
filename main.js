@@ -69,10 +69,7 @@ var StorageManager = class {
     try {
       const exists = await this.app.vault.adapter.exists(path);
       if (!exists) {
-        const seedEntries = this.generateSeedEntries(yearMonth);
-        await this.saveEntriesForMonth(yearMonth, seedEntries);
-        await this.generateSeedPomodoroLogs(yearMonth, seedEntries);
-        return seedEntries;
+        return [];
       }
       const content = await this.app.vault.adapter.read(path);
       return JSON.parse(content);
@@ -148,132 +145,6 @@ var StorageManager = class {
     } catch (e) {
       return [];
     }
-  }
-  generateSeedEntries(yearMonth) {
-    const now = /* @__PURE__ */ new Date();
-    const currentDay = now.getDate().toString().padStart(2, "0");
-    return [
-      {
-        id: "seed-event-1",
-        title: "Computer Systems Exam",
-        date: `${yearMonth}-15`,
-        startTime: "09:00",
-        endTime: "11:00",
-        type: "event",
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      {
-        id: "seed-event-2",
-        title: "Algorithms & Data Structures Exam",
-        date: `${yearMonth}-22`,
-        startTime: "14:00",
-        endTime: "16:00",
-        type: "event",
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      {
-        id: "seed-event-3",
-        title: "Project Milestone Release",
-        date: `${yearMonth}-28`,
-        startTime: "10:00",
-        endTime: "12:00",
-        type: "event",
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      {
-        id: "seed-task-1",
-        title: "Review Chapter 4 Practice Problems",
-        date: `${yearMonth}-${currentDay}`,
-        startTime: "08:00",
-        endTime: "09:30",
-        type: "task",
-        actualSecondsSpent: 4800,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      {
-        id: "seed-task-2",
-        title: "Lab Assignment Draft",
-        date: `${yearMonth}-${currentDay}`,
-        startTime: "11:00",
-        endTime: "13:00",
-        type: "task",
-        actualSecondsSpent: 7200,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      {
-        id: "seed-task-3",
-        title: "System Architecture Diagram",
-        date: `${yearMonth}-${currentDay}`,
-        startTime: "14:00",
-        endTime: "16:00",
-        type: "task",
-        actualSecondsSpent: 4800,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      }
-    ];
-  }
-  async generateSeedPomodoroLogs(yearMonth, seedEntries) {
-    const path = this.getPomodoroLogFilePath(yearMonth);
-    const now = /* @__PURE__ */ new Date();
-    const todayStr = now.toISOString().substring(0, 10);
-    const logs = [
-      {
-        id: "log-1",
-        taskId: seedEntries[3].id,
-        taskTitle: seedEntries[3].title,
-        type: "work",
-        durationSeconds: 2400,
-        completedAt: Date.now() - 864e5,
-        date: todayStr
-      },
-      {
-        id: "log-2",
-        taskId: seedEntries[3].id,
-        taskTitle: seedEntries[3].title,
-        type: "work",
-        durationSeconds: 2400,
-        completedAt: Date.now() - 828e5,
-        date: todayStr
-      },
-      {
-        id: "log-3",
-        taskId: seedEntries[4].id,
-        taskTitle: seedEntries[4].title,
-        type: "work",
-        durationSeconds: 2400,
-        completedAt: Date.now() - 432e5,
-        date: todayStr
-      },
-      {
-        id: "log-4",
-        taskId: seedEntries[4].id,
-        taskTitle: seedEntries[4].title,
-        type: "work",
-        durationSeconds: 2400,
-        completedAt: Date.now() - 396e5,
-        date: todayStr
-      },
-      {
-        id: "log-5",
-        taskId: seedEntries[4].id,
-        taskTitle: seedEntries[4].title,
-        type: "work",
-        durationSeconds: 2400,
-        completedAt: Date.now() - 36e6,
-        date: todayStr
-      }
-    ];
-    this.isLocalSaving = true;
-    await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
-    setTimeout(() => {
-      this.isLocalSaving = false;
-    }, 500);
   }
 };
 
@@ -1057,8 +928,8 @@ var MonthViewRenderComponent = class {
     const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
     const header = breakdownPanel.createDiv("fcp-breakdown-header");
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Actual Focus Time</div>
-      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Focus Hrs</div>
+      <div class="fcp-breakdown-title">Monthly Focus</div>
+      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
     `;
     if (activities.length === 0 || grandTotalSeconds === 0) {
       const emptyMsg = breakdownPanel.createDiv("fcp-breakdown-empty");
