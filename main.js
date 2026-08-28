@@ -279,7 +279,7 @@ var StorageManager = class {
 
 // src/pomodoro.ts
 var PomodoroManager = class {
-  constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback) {
+  constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
     this.mode = "work";
     this.isRunning = false;
     this.timeLeftSeconds = 40 * 60;
@@ -290,6 +290,7 @@ var PomodoroManager = class {
     this.onStateChange = onStateChange;
     this.onSessionComplete = onSessionComplete;
     this.playAudioCallback = playAudioCallback;
+    this.onBreakStartCallback = onBreakStartCallback;
     this.resetTimer();
   }
   getSettings() {
@@ -349,6 +350,9 @@ var PomodoroManager = class {
   switchMode(newMode) {
     this.pause();
     this.mode = newMode || (this.mode === "work" ? "break" : "work");
+    if (this.mode === "break" && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
     this.resetTimer();
   }
   tick() {
@@ -379,6 +383,9 @@ var PomodoroManager = class {
       }
     }
     this.mode = this.mode === "work" ? "break" : "work";
+    if (this.mode === "break" && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
     this.resetTimer();
     if (settings.autoStartBreak && this.mode === "break") {
       this.start();
@@ -904,16 +911,27 @@ var MonthViewRenderComponent = class {
     this.dailyHoursMap = dailyHoursMap;
     this.render();
   }
+  getTaskColor(title) {
+    const normalized = title.toLowerCase().trim();
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 68%, 52%)`;
+  }
   render() {
     this.containerEl.empty();
     this.containerEl.addClass("fcp-month-view-wrapper");
-    const weekdaysHeader = this.containerEl.createDiv("fcp-month-weekdays-header");
+    const layoutContainer = this.containerEl.createDiv("fcp-month-layout-container");
+    const gridPanel = layoutContainer.createDiv("fcp-month-grid-panel");
+    const weekdaysHeader = gridPanel.createDiv("fcp-month-weekdays-header");
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     dayNames.forEach((d) => {
       const col = weekdaysHeader.createDiv("fcp-month-weekday-col");
       col.textContent = d;
     });
-    const monthGrid = this.containerEl.createDiv("fcp-month-grid");
+    const monthGrid = gridPanel.createDiv("fcp-month-grid");
     const firstDayDate = new Date(this.currentYear, this.currentMonth, 1);
     let startDayOfWeek = firstDayDate.getDay() - 1;
     if (startDayOfWeek === -1)
@@ -976,6 +994,7 @@ var MonthViewRenderComponent = class {
         hoursTag.textContent = formattedHours;
       }
     }
+    this.renderBreakdownPanel(layoutContainer);
     setTimeout(() => {
       const scrollbarWidth = monthGrid.offsetWidth - monthGrid.clientWidth;
       if (scrollbarWidth > 0) {
@@ -984,6 +1003,63 @@ var MonthViewRenderComponent = class {
         weekdaysHeader.style.paddingRight = "0px";
       }
     }, 0);
+  }
+  renderBreakdownPanel(parentEl) {
+    const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, "0")}`;
+    const activityMap = /* @__PURE__ */ new Map();
+    let grandTotalHours = 0;
+    this.entries.forEach((entry) => {
+      if (!entry.date.startsWith(monthPrefix))
+        return;
+      const title = (entry.title || "General").trim();
+      const normKey = title.toLowerCase();
+      const hours = entry.durationMinutes ? entry.durationMinutes / 60 : 0.5;
+      grandTotalHours += hours;
+      if (activityMap.has(normKey)) {
+        activityMap.get(normKey).totalHours += hours;
+      } else {
+        activityMap.set(normKey, {
+          displayTitle: title,
+          totalHours: hours,
+          color: this.getTaskColor(title)
+        });
+      }
+    });
+    const activities = Array.from(activityMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+    const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
+    const header = breakdownPanel.createDiv("fcp-breakdown-header");
+    header.innerHTML = `
+      <div class="fcp-breakdown-title">Monthly Breakdown</div>
+      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Total Hrs</div>
+    `;
+    if (activities.length === 0 || grandTotalHours === 0) {
+      const emptyMsg = breakdownPanel.createDiv("fcp-breakdown-empty");
+      emptyMsg.textContent = "No work recorded this month.";
+      return;
+    }
+    const barContainer = breakdownPanel.createDiv("fcp-stacked-bar");
+    activities.forEach((act) => {
+      const pct = act.totalHours / grandTotalHours * 100;
+      const segment = barContainer.createDiv("fcp-stacked-segment");
+      segment.style.backgroundColor = act.color;
+      segment.style.flex = `${pct}`;
+      segment.title = `${act.displayTitle}: ${act.totalHours.toFixed(1)}h (${pct.toFixed(0)}%)`;
+    });
+    const legend = breakdownPanel.createDiv("fcp-breakdown-legend");
+    activities.forEach((act) => {
+      const pct = act.totalHours / grandTotalHours * 100;
+      const item = legend.createDiv("fcp-legend-item");
+      item.innerHTML = `
+        <div class="fcp-legend-left">
+          <span class="fcp-legend-dot" style="background-color: ${act.color};"></span>
+          <span class="fcp-legend-name" title="${this.escapeHtml(act.displayTitle)}">${this.escapeHtml(act.displayTitle)}</span>
+        </div>
+        <div class="fcp-legend-right">
+          <span class="fcp-legend-hours">${act.totalHours.toFixed(1)}h</span>
+          <span class="fcp-legend-pct">${pct.toFixed(0)}%</span>
+        </div>
+      `;
+    });
   }
   escapeHtml(str) {
     const div = document.createElement("div");
@@ -1299,7 +1375,8 @@ var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
           }
         });
       },
-      (filePath) => this.playVaultAudio(filePath)
+      (filePath) => this.playVaultAudio(filePath),
+      () => this.app.workspace.trigger("focus-calendar:break-start")
     );
     this.updateStatusBar(this.pomodoro.getState());
     this.registerView(

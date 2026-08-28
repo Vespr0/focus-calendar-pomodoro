@@ -41,7 +41,8 @@ export default class FocusCalendarPlugin extends Plugin {
           }
         });
       },
-      (filePath: string) => this.playVaultAudio(filePath)
+      (filePath: string) => this.playVaultAudio(filePath),
+      () => (this.app.workspace as any).trigger('focus-calendar:break-start')
     );
 
     this.updateStatusBar(this.pomodoro.getState());

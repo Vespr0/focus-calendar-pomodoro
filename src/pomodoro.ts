@@ -21,17 +21,20 @@ export class PomodoroManager {
   private onStateChange: (state: PomodoroState) => void;
   private onSessionComplete: (session: PomodoroLogSession) => void;
   private playAudioCallback?: (filePath: string) => void;
+  private onBreakStartCallback?: () => void;
 
   constructor(
     settingsGetter: () => FocusCalendarSettings,
     onStateChange: (state: PomodoroState) => void,
     onSessionComplete: (session: PomodoroLogSession) => void,
-    playAudioCallback?: (filePath: string) => void
+    playAudioCallback?: (filePath: string) => void,
+    onBreakStartCallback?: () => void
   ) {
     this.settingsGetter = settingsGetter;
     this.onStateChange = onStateChange;
     this.onSessionComplete = onSessionComplete;
     this.playAudioCallback = playAudioCallback;
+    this.onBreakStartCallback = onBreakStartCallback;
     this.resetTimer();
   }
 
@@ -98,6 +101,9 @@ export class PomodoroManager {
   public switchMode(newMode?: PomodoroMode) {
     this.pause();
     this.mode = newMode || (this.mode === 'work' ? 'break' : 'work');
+    if (this.mode === 'break' && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
     this.resetTimer();
   }
 
@@ -135,6 +141,9 @@ export class PomodoroManager {
     }
 
     this.mode = this.mode === 'work' ? 'break' : 'work';
+    if (this.mode === 'break' && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
     this.resetTimer();
     if (settings.autoStartBreak && this.mode === 'break') {
       this.start();
