@@ -1,3 +1,4 @@
+import { Notice } from 'obsidian';
 import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings } from './types';
 
 export type PomodoroMode = 'work' | 'break';
@@ -61,11 +62,16 @@ export class PomodoroManager {
     return this.focusedTask;
   }
 
-  public start() {
-    if (this.isRunning) return;
+  public start(): boolean {
+    if (this.isRunning) return true;
+    if (this.mode === 'work' && !this.focusedTask) {
+      new Notice('⚠️ Select a task from the calendar before starting the Pomodoro timer!', 4000);
+      return false;
+    }
     this.isRunning = true;
     this.timerId = window.setInterval(() => this.tick(), 1000);
     this.notifyState();
+    return true;
   }
 
   public pause() {

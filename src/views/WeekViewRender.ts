@@ -458,6 +458,19 @@ export class WeekViewRenderComponent {
     return Math.round(mins / 30) * 30;
   }
 
+  public updateFocusedTask(focusedTaskId: string | null) {
+    if (!this.containerEl) return;
+    const cards = this.containerEl.querySelectorAll('.fcp-entry-card');
+    cards.forEach((cardEl) => {
+      const htmlEl = cardEl as HTMLElement;
+      if (htmlEl.dataset.id === focusedTaskId) {
+        htmlEl.addClass('is-focused');
+      } else {
+        htmlEl.removeClass('is-focused');
+      }
+    });
+  }
+
   private escapeHtml(str: string): string {
     const div = document.createElement('div');
     div.textContent = str;

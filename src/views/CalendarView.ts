@@ -166,7 +166,14 @@ export class FocusCalendarView extends ItemView {
             this.updateHeaderStats();
           },
           onTaskFocus: (entry) => {
-            this.pomodoro.setFocusedTask(entry);
+            const currentFocused = this.pomodoro.getFocusedTask();
+            if (currentFocused?.id === entry.id) {
+              this.pomodoro.setFocusedTask(null);
+              this.weekComponent?.updateFocusedTask(null);
+            } else {
+              this.pomodoro.setFocusedTask(entry);
+              this.weekComponent?.updateFocusedTask(entry.id);
+            }
           },
           getFocusedTaskId: () => this.pomodoro.getFocusedTask()?.id
         }

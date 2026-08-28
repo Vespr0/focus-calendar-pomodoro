@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => FocusCalendarPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/types.ts
 var DEFAULT_SETTINGS = {
@@ -278,6 +278,7 @@ var StorageManager = class {
 };
 
 // src/pomodoro.ts
+var import_obsidian2 = require("obsidian");
 var PomodoroManager = class {
   constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
     this.mode = "work";
@@ -314,10 +315,15 @@ var PomodoroManager = class {
   }
   start() {
     if (this.isRunning)
-      return;
+      return true;
+    if (this.mode === "work" && !this.focusedTask) {
+      new import_obsidian2.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
+      return false;
+    }
     this.isRunning = true;
     this.timerId = window.setInterval(() => this.tick(), 1e3);
     this.notifyState();
+    return true;
   }
   pause() {
     if (!this.isRunning)
@@ -402,7 +408,7 @@ var PomodoroManager = class {
 };
 
 // src/views/CalendarView.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
@@ -531,7 +537,7 @@ var PomodoroHeaderComponent = class {
 };
 
 // src/views/WeekViewRender.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 var WeekViewRenderComponent = class {
   // pixels per 30 minutes (52 / 2)
   constructor(containerEl, weekStart, entries, callbacks) {
@@ -677,7 +683,7 @@ var WeekViewRenderComponent = class {
         return;
       e.preventDefault();
       e.stopPropagation();
-      const menu = new import_obsidian2.Menu();
+      const menu = new import_obsidian3.Menu();
       menu.addItem((item) => {
         item.setTitle("Rename Entry").setIcon("lucide-edit-3").onClick(() => {
           this.enableCardInlineEdit(card, entry);
@@ -886,6 +892,19 @@ var WeekViewRenderComponent = class {
   snapTo30Min(mins) {
     return Math.round(mins / 30) * 30;
   }
+  updateFocusedTask(focusedTaskId) {
+    if (!this.containerEl)
+      return;
+    const cards = this.containerEl.querySelectorAll(".fcp-entry-card");
+    cards.forEach((cardEl) => {
+      const htmlEl = cardEl;
+      if (htmlEl.dataset.id === focusedTaskId) {
+        htmlEl.addClass("is-focused");
+      } else {
+        htmlEl.removeClass("is-focused");
+      }
+    });
+  }
   escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
@@ -1079,7 +1098,7 @@ var MonthViewRenderComponent = class {
 
 // src/views/CalendarView.ts
 var VIEW_TYPE_FOCUS_CALENDAR = "focus-calendar-pomodoro-view";
-var FocusCalendarView = class extends import_obsidian3.ItemView {
+var FocusCalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, storage, pomodoro) {
     super(leaf);
     this.viewMode = "week";
@@ -1215,7 +1234,15 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
             this.updateHeaderStats();
           },
           onTaskFocus: (entry) => {
-            this.pomodoro.setFocusedTask(entry);
+            var _a, _b;
+            const currentFocused = this.pomodoro.getFocusedTask();
+            if ((currentFocused == null ? void 0 : currentFocused.id) === entry.id) {
+              this.pomodoro.setFocusedTask(null);
+              (_a = this.weekComponent) == null ? void 0 : _a.updateFocusedTask(null);
+            } else {
+              this.pomodoro.setFocusedTask(entry);
+              (_b = this.weekComponent) == null ? void 0 : _b.updateFocusedTask(entry.id);
+            }
           },
           getFocusedTaskId: () => {
             var _a;
@@ -1310,8 +1337,8 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
 };
 
 // src/settings.ts
-var import_obsidian4 = require("obsidian");
-var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
+var import_obsidian5 = require("obsidian");
+var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -1320,7 +1347,7 @@ var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Focus Calendar & Pomodoro Settings" });
-    new import_obsidian4.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.workDurationMinutes = val;
@@ -1328,7 +1355,7 @@ var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian4.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.breakDurationMinutes = val;
@@ -1336,15 +1363,15 @@ var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian4.Setting(containerEl).setName("Completion Alarm Sound (Vault MP3 Path)").setDesc("Path to an MP3 file in your vault (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.soundFilePath || "").onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("Completion Alarm Sound (Vault MP3 Path)").setDesc("Path to an MP3 file in your vault (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.soundFilePath || "").onChange(async (value) => {
       this.plugin.settings.soundFilePath = value.trim();
       await this.plugin.saveSettings();
     }));
-    new import_obsidian4.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("CalendarData").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("CalendarData").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
       this.plugin.settings.dataDirectory = value.trim() || "CalendarData";
       await this.plugin.saveSettings();
     }));
-    new import_obsidian4.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
+    new import_obsidian5.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
       this.plugin.settings.autoStartBreak = value;
       await this.plugin.saveSettings();
     }));
@@ -1352,7 +1379,7 @@ var FocusCalendarSettingTab = class extends import_obsidian4.PluginSettingTab {
 };
 
 // src/main.ts
-var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
+var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -1482,7 +1509,7 @@ var FocusCalendarPlugin = class extends import_obsidian5.Plugin {
   async playVaultAudio(filePath) {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian5.TFile) {
+      if (file instanceof import_obsidian6.TFile) {
         const resourcePath = this.app.vault.getResourcePath(file);
         const audio = new Audio(resourcePath);
         await audio.play();

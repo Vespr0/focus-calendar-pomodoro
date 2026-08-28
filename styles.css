@@ -425,8 +425,21 @@
 
 .fcp-entry-card.is-focused {
   outline: 2px solid var(--interactive-accent);
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 12px 2px var(--interactive-accent), inset 0 0 8px rgba(59, 130, 246, 0.3);
+  animation: fcp-focused-glow 2s infinite ease-in-out;
   z-index: 5;
+}
+
+@keyframes fcp-focused-glow {
+  0% {
+    box-shadow: 0 0 8px 1px var(--interactive-accent), inset 0 0 6px rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 16px 4px var(--interactive-accent), inset 0 0 10px rgba(59, 130, 246, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 8px 1px var(--interactive-accent), inset 0 0 6px rgba(59, 130, 246, 0.2);
+  }
 }
 
 .fcp-entry-card.is-dragging {
