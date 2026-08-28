@@ -118,7 +118,27 @@ var StorageManager = class {
     } catch (e) {
       logs = [];
     }
-    logs.push(session);
+    const titleKey = (session.taskTitle || "General Focus").trim().toLowerCase();
+    const existingIdx = logs.findIndex(
+      (l) => l.date === session.date && l.type === session.type && (l.taskTitle || "General Focus").trim().toLowerCase() === titleKey
+    );
+    if (existingIdx >= 0) {
+      logs[existingIdx].durationSeconds += session.durationSeconds;
+      logs[existingIdx].completedAt = session.completedAt;
+      if (session.taskId)
+        logs[existingIdx].taskId = session.taskId;
+    } else {
+      const cleanId = `${session.date}:${titleKey}`;
+      logs.push({
+        id: cleanId,
+        taskId: session.taskId,
+        taskTitle: session.taskTitle || "General Focus",
+        type: session.type,
+        durationSeconds: session.durationSeconds,
+        completedAt: session.completedAt,
+        date: session.date
+      });
+    }
     this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
     setTimeout(() => {
