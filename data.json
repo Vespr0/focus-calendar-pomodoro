@@ -1,7 +1,7 @@
 {
   "workDurationMinutes": 40,
   "breakDurationMinutes": 10,
-  "dataDirectory": "CalendarData",
+  "dataDirectory": "calendar-data",
   "autoStartBreak": true,
   "soundFilePath": ""
 }
