@@ -30,295 +30,8 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian6 = require("obsidian");
 
-// src/types.ts
-var DEFAULT_SETTINGS = {
-  workDurationMinutes: 40,
-  breakDurationMinutes: 10,
-  dataDirectory: "calendar-data",
-  autoStartBreak: false,
-  soundFilePath: ""
-};
-
-// src/storage.ts
-var import_obsidian = require("obsidian");
-var StorageManager = class {
-  constructor(app, settingsGetter) {
-    this.isLocalSaving = false;
-    this.app = app;
-    this.settingsGetter = settingsGetter;
-  }
-  get dataFolder() {
-    return (0, import_obsidian.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
-  }
-  async ensureDataFolderExists() {
-    const folderPath = this.dataFolder;
-    const exists = await this.app.vault.adapter.exists(folderPath);
-    if (!exists) {
-      await this.app.vault.createFolder(folderPath);
-    }
-  }
-  getMonthFilePath(yearMonth) {
-    return (0, import_obsidian.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
-  }
-  getPomodoroLogFilePath(yearMonth) {
-    return (0, import_obsidian.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
-  }
-  async loadEntriesForMonth(yearMonth) {
-    await this.ensureDataFolderExists();
-    const path = this.getMonthFilePath(yearMonth);
-    try {
-      const exists = await this.app.vault.adapter.exists(path);
-      if (!exists) {
-        return [];
-      }
-      const content = await this.app.vault.adapter.read(path);
-      return JSON.parse(content);
-    } catch (e) {
-      console.error(`Failed to read calendar entries for ${yearMonth}:`, e);
-      return [];
-    }
-  }
-  async saveEntriesForMonth(yearMonth, entries) {
-    await this.ensureDataFolderExists();
-    const path = this.getMonthFilePath(yearMonth);
-    const data = JSON.stringify(entries, null, 2);
-    this.isLocalSaving = true;
-    await this.app.vault.adapter.write(path, data);
-    setTimeout(() => {
-      this.isLocalSaving = false;
-    }, 500);
-  }
-  async saveEntry(entry) {
-    const yearMonth = entry.date.substring(0, 7);
-    const currentEntries = await this.loadEntriesForMonth(yearMonth);
-    const existingIdx = currentEntries.findIndex((e) => e.id === entry.id);
-    if (existingIdx >= 0) {
-      currentEntries[existingIdx] = entry;
-    } else {
-      currentEntries.push(entry);
-    }
-    await this.saveEntriesForMonth(yearMonth, currentEntries);
-  }
-  async deleteEntry(entryId, date) {
-    const yearMonth = date.substring(0, 7);
-    const currentEntries = await this.loadEntriesForMonth(yearMonth);
-    const filtered = currentEntries.filter((e) => e.id !== entryId);
-    await this.saveEntriesForMonth(yearMonth, filtered);
-  }
-  async logPomodoroSession(session) {
-    await this.ensureDataFolderExists();
-    const yearMonth = session.date.substring(0, 7);
-    const path = this.getPomodoroLogFilePath(yearMonth);
-    let logs = [];
-    try {
-      if (await this.app.vault.adapter.exists(path)) {
-        const content = await this.app.vault.adapter.read(path);
-        logs = JSON.parse(content);
-      }
-    } catch (e) {
-      logs = [];
-    }
-    const titleKey = (session.taskTitle || "General Focus").trim().toLowerCase();
-    const existingIdx = logs.findIndex(
-      (l) => l.date === session.date && l.type === session.type && (l.taskTitle || "General Focus").trim().toLowerCase() === titleKey
-    );
-    if (existingIdx >= 0) {
-      logs[existingIdx].durationSeconds += session.durationSeconds;
-      logs[existingIdx].completedAt = session.completedAt;
-      if (session.taskId)
-        logs[existingIdx].taskId = session.taskId;
-    } else {
-      const cleanId = `${session.date}:${titleKey}`;
-      logs.push({
-        id: cleanId,
-        taskId: session.taskId,
-        taskTitle: session.taskTitle || "General Focus",
-        type: session.type,
-        durationSeconds: session.durationSeconds,
-        completedAt: session.completedAt,
-        date: session.date
-      });
-    }
-    this.isLocalSaving = true;
-    await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
-    setTimeout(() => {
-      this.isLocalSaving = false;
-    }, 500);
-    if (session.taskId && session.type === "work") {
-      const entries = await this.loadEntriesForMonth(yearMonth);
-      const entry = entries.find((e) => e.id === session.taskId);
-      if (entry) {
-        entry.actualSecondsSpent = (entry.actualSecondsSpent || 0) + session.durationSeconds;
-        entry.updatedAt = Date.now();
-        await this.saveEntriesForMonth(yearMonth, entries);
-      }
-    }
-  }
-  async loadPomodoroLogsForMonth(yearMonth) {
-    await this.ensureDataFolderExists();
-    const path = this.getPomodoroLogFilePath(yearMonth);
-    try {
-      if (!await this.app.vault.adapter.exists(path))
-        return [];
-      const content = await this.app.vault.adapter.read(path);
-      return JSON.parse(content);
-    } catch (e) {
-      return [];
-    }
-  }
-};
-
-// src/pomodoro.ts
-var import_obsidian2 = require("obsidian");
-var PomodoroManager = class {
-  constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
-    this.mode = "work";
-    this.isRunning = false;
-    this.timeLeftSeconds = 40 * 60;
-    this.totalDurationSeconds = 40 * 60;
-    this.timerId = null;
-    this.focusedTask = null;
-    this.activeWorkSecondsAccumulated = 0;
-    this.settingsGetter = settingsGetter;
-    this.onStateChange = onStateChange;
-    this.onSessionComplete = onSessionComplete;
-    this.playAudioCallback = playAudioCallback;
-    this.onBreakStartCallback = onBreakStartCallback;
-    this.resetTimer();
-  }
-  getSettings() {
-    return this.settingsGetter();
-  }
-  getIsRunning() {
-    return this.isRunning;
-  }
-  getState() {
-    return {
-      mode: this.mode,
-      isRunning: this.isRunning,
-      timeLeftSeconds: this.timeLeftSeconds,
-      totalDurationSeconds: this.totalDurationSeconds,
-      focusedTask: this.focusedTask
-    };
-  }
-  setFocusedTask(task) {
-    if (this.isRunning) {
-      this.flushWorkLog();
-    }
-    this.focusedTask = task;
-    this.notifyState();
-  }
-  getFocusedTask() {
-    return this.focusedTask;
-  }
-  start() {
-    if (this.isRunning)
-      return true;
-    if (this.mode === "work" && !this.focusedTask) {
-      new import_obsidian2.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
-      return false;
-    }
-    this.isRunning = true;
-    this.timerId = window.setInterval(() => this.tick(), 1e3);
-    this.notifyState();
-    return true;
-  }
-  pause() {
-    if (!this.isRunning)
-      return;
-    this.isRunning = false;
-    if (this.timerId !== null) {
-      clearInterval(this.timerId);
-      this.timerId = null;
-    }
-    this.flushWorkLog();
-    this.notifyState();
-  }
-  togglePlayPause() {
-    if (this.isRunning) {
-      this.pause();
-    } else {
-      this.start();
-    }
-  }
-  resetTimer() {
-    this.pause();
-    this.flushWorkLog();
-    const settings = this.settingsGetter();
-    if (this.mode === "work") {
-      this.totalDurationSeconds = (settings.workDurationMinutes || 40) * 60;
-    } else {
-      this.totalDurationSeconds = (settings.breakDurationMinutes || 10) * 60;
-    }
-    this.timeLeftSeconds = this.totalDurationSeconds;
-    this.notifyState();
-  }
-  switchMode(newMode) {
-    this.pause();
-    this.flushWorkLog();
-    this.mode = newMode || (this.mode === "work" ? "break" : "work");
-    if (this.mode === "break" && this.onBreakStartCallback) {
-      this.onBreakStartCallback();
-    }
-    this.resetTimer();
-  }
-  tick() {
-    if (this.mode === "work") {
-      this.activeWorkSecondsAccumulated++;
-    }
-    if (this.timeLeftSeconds > 0) {
-      this.timeLeftSeconds--;
-      this.notifyState();
-    } else {
-      this.onCompleted();
-    }
-  }
-  flushWorkLog() {
-    if (this.mode === "work" && this.activeWorkSecondsAccumulated > 0) {
-      const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
-      const session = {
-        id: "session-" + Date.now(),
-        taskId: this.focusedTask ? this.focusedTask.id : void 0,
-        taskTitle: this.focusedTask ? this.focusedTask.title || "General Focus" : "General Focus",
-        type: "work",
-        durationSeconds: this.activeWorkSecondsAccumulated,
-        completedAt: Date.now(),
-        date: today
-      };
-      this.activeWorkSecondsAccumulated = 0;
-      this.onSessionComplete(session);
-    }
-  }
-  onCompleted() {
-    this.pause();
-    this.flushWorkLog();
-    const settings = this.settingsGetter();
-    if (settings.soundFilePath && settings.soundFilePath.trim() !== "") {
-      if (this.playAudioCallback) {
-        this.playAudioCallback(settings.soundFilePath.trim());
-      }
-    }
-    this.mode = this.mode === "work" ? "break" : "work";
-    if (this.mode === "break" && this.onBreakStartCallback) {
-      this.onBreakStartCallback();
-    }
-    this.resetTimer();
-    if (settings.autoStartBreak && this.mode === "break") {
-      this.start();
-    }
-  }
-  notifySettingsUpdated() {
-    if (!this.isRunning) {
-      this.resetTimer();
-    }
-  }
-  notifyState() {
-    this.onStateChange(this.getState());
-  }
-};
-
 // src/views/CalendarView.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
@@ -447,7 +160,7 @@ var PomodoroHeaderComponent = class {
 };
 
 // src/views/WeekViewRender.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian = require("obsidian");
 var WeekViewRenderComponent = class {
   // pixels per 30 minutes (52 / 2)
   constructor(containerEl, weekStart, entries, callbacks) {
@@ -593,7 +306,7 @@ var WeekViewRenderComponent = class {
         return;
       e.preventDefault();
       e.stopPropagation();
-      const menu = new import_obsidian3.Menu();
+      const menu = new import_obsidian.Menu();
       menu.addItem((item) => {
         item.setTitle("Rename Entry").setIcon("lucide-edit-3").onClick(() => {
           this.enableCardInlineEdit(card, entry);
@@ -1008,7 +721,7 @@ var MonthViewRenderComponent = class {
 
 // src/views/CalendarView.ts
 var VIEW_TYPE_FOCUS_CALENDAR = "focus-calendar-pomodoro-view";
-var FocusCalendarView = class extends import_obsidian4.ItemView {
+var FocusCalendarView = class extends import_obsidian2.ItemView {
   constructor(leaf, storage, pomodoro) {
     super(leaf);
     this.viewMode = "week";
@@ -1246,6 +959,291 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
   }
 };
 
+// src/storage.ts
+var import_obsidian3 = require("obsidian");
+var StorageManager = class {
+  constructor(app, settingsGetter) {
+    this.isLocalSaving = false;
+    this.app = app;
+    this.settingsGetter = settingsGetter;
+  }
+  get dataFolder() {
+    return (0, import_obsidian3.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
+  }
+  async ensureDataFolderExists() {
+    const folderPath = this.dataFolder;
+    const exists = await this.app.vault.adapter.exists(folderPath);
+    if (!exists) {
+      await this.app.vault.createFolder(folderPath);
+    }
+  }
+  getMonthFilePath(yearMonth) {
+    return (0, import_obsidian3.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
+  }
+  getPomodoroLogFilePath(yearMonth) {
+    return (0, import_obsidian3.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+  }
+  async loadEntriesForMonth(yearMonth) {
+    await this.ensureDataFolderExists();
+    const path = this.getMonthFilePath(yearMonth);
+    try {
+      const exists = await this.app.vault.adapter.exists(path);
+      if (!exists) {
+        return [];
+      }
+      const content = await this.app.vault.adapter.read(path);
+      return JSON.parse(content);
+    } catch (e) {
+      console.error(`Failed to read calendar entries for ${yearMonth}:`, e);
+      return [];
+    }
+  }
+  async saveEntriesForMonth(yearMonth, entries) {
+    await this.ensureDataFolderExists();
+    const path = this.getMonthFilePath(yearMonth);
+    const data = JSON.stringify(entries, null, 2);
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, data);
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
+  }
+  async saveEntry(entry) {
+    const yearMonth = entry.date.substring(0, 7);
+    const currentEntries = await this.loadEntriesForMonth(yearMonth);
+    const existingIdx = currentEntries.findIndex((e) => e.id === entry.id);
+    if (existingIdx >= 0) {
+      currentEntries[existingIdx] = entry;
+    } else {
+      currentEntries.push(entry);
+    }
+    await this.saveEntriesForMonth(yearMonth, currentEntries);
+  }
+  async deleteEntry(entryId, date) {
+    const yearMonth = date.substring(0, 7);
+    const currentEntries = await this.loadEntriesForMonth(yearMonth);
+    const filtered = currentEntries.filter((e) => e.id !== entryId);
+    await this.saveEntriesForMonth(yearMonth, filtered);
+  }
+  async logPomodoroSession(session) {
+    await this.ensureDataFolderExists();
+    const yearMonth = session.date.substring(0, 7);
+    const path = this.getPomodoroLogFilePath(yearMonth);
+    let logs = [];
+    try {
+      if (await this.app.vault.adapter.exists(path)) {
+        const content = await this.app.vault.adapter.read(path);
+        logs = JSON.parse(content);
+      }
+    } catch (e) {
+      logs = [];
+    }
+    const titleKey = (session.taskTitle || "General Focus").trim().toLowerCase();
+    const existingIdx = logs.findIndex(
+      (l) => l.date === session.date && l.type === session.type && (l.taskTitle || "General Focus").trim().toLowerCase() === titleKey
+    );
+    if (existingIdx >= 0) {
+      logs[existingIdx].durationSeconds += session.durationSeconds;
+      logs[existingIdx].completedAt = session.completedAt;
+      if (session.taskId)
+        logs[existingIdx].taskId = session.taskId;
+    } else {
+      const cleanId = `${session.date}:${titleKey}`;
+      logs.push({
+        id: cleanId,
+        taskId: session.taskId,
+        taskTitle: session.taskTitle || "General Focus",
+        type: session.type,
+        durationSeconds: session.durationSeconds,
+        completedAt: session.completedAt,
+        date: session.date
+      });
+    }
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
+    if (session.taskId && session.type === "work") {
+      const entries = await this.loadEntriesForMonth(yearMonth);
+      const entry = entries.find((e) => e.id === session.taskId);
+      if (entry) {
+        entry.actualSecondsSpent = (entry.actualSecondsSpent || 0) + session.durationSeconds;
+        entry.updatedAt = Date.now();
+        await this.saveEntriesForMonth(yearMonth, entries);
+      }
+    }
+  }
+  async loadPomodoroLogsForMonth(yearMonth) {
+    await this.ensureDataFolderExists();
+    const path = this.getPomodoroLogFilePath(yearMonth);
+    try {
+      if (!await this.app.vault.adapter.exists(path))
+        return [];
+      const content = await this.app.vault.adapter.read(path);
+      return JSON.parse(content);
+    } catch (e) {
+      return [];
+    }
+  }
+};
+
+// src/pomodoro.ts
+var import_obsidian4 = require("obsidian");
+var PomodoroManager = class {
+  constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
+    this.mode = "work";
+    this.isRunning = false;
+    this.timeLeftSeconds = 40 * 60;
+    this.totalDurationSeconds = 40 * 60;
+    this.timerId = null;
+    this.focusedTask = null;
+    this.activeWorkSecondsAccumulated = 0;
+    this.settingsGetter = settingsGetter;
+    this.onStateChange = onStateChange;
+    this.onSessionComplete = onSessionComplete;
+    this.playAudioCallback = playAudioCallback;
+    this.onBreakStartCallback = onBreakStartCallback;
+    this.resetTimer();
+  }
+  getSettings() {
+    return this.settingsGetter();
+  }
+  getIsRunning() {
+    return this.isRunning;
+  }
+  getState() {
+    return {
+      mode: this.mode,
+      isRunning: this.isRunning,
+      timeLeftSeconds: this.timeLeftSeconds,
+      totalDurationSeconds: this.totalDurationSeconds,
+      focusedTask: this.focusedTask
+    };
+  }
+  setFocusedTask(task) {
+    var _a;
+    if (((_a = this.focusedTask) == null ? void 0 : _a.id) === (task == null ? void 0 : task.id))
+      return;
+    if (this.isRunning && this.mode === "work") {
+      this.flushWorkLog();
+    }
+    this.focusedTask = task;
+    if (!task && this.mode === "work" && this.isRunning) {
+      this.pause();
+      new import_obsidian4.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
+    }
+    this.notifyState();
+  }
+  getFocusedTask() {
+    return this.focusedTask;
+  }
+  start() {
+    if (this.isRunning)
+      return true;
+    if (this.mode === "work" && !this.focusedTask) {
+      new import_obsidian4.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
+      return false;
+    }
+    this.isRunning = true;
+    this.timerId = window.setInterval(() => this.tick(), 1e3);
+    this.notifyState();
+    return true;
+  }
+  pause() {
+    if (!this.isRunning)
+      return;
+    this.isRunning = false;
+    if (this.timerId !== null) {
+      clearInterval(this.timerId);
+      this.timerId = null;
+    }
+    this.flushWorkLog();
+    this.notifyState();
+  }
+  togglePlayPause() {
+    if (this.isRunning) {
+      this.pause();
+    } else {
+      this.start();
+    }
+  }
+  resetTimer() {
+    this.pause();
+    this.flushWorkLog();
+    const settings = this.settingsGetter();
+    if (this.mode === "work") {
+      this.totalDurationSeconds = (settings.workDurationMinutes || 40) * 60;
+    } else {
+      this.totalDurationSeconds = (settings.breakDurationMinutes || 10) * 60;
+    }
+    this.timeLeftSeconds = this.totalDurationSeconds;
+    this.notifyState();
+  }
+  switchMode(newMode) {
+    this.pause();
+    this.flushWorkLog();
+    this.mode = newMode || (this.mode === "work" ? "break" : "work");
+    if (this.mode === "break" && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
+    this.resetTimer();
+  }
+  tick() {
+    if (this.mode === "work") {
+      this.activeWorkSecondsAccumulated++;
+    }
+    if (this.timeLeftSeconds > 0) {
+      this.timeLeftSeconds--;
+      this.notifyState();
+    } else {
+      this.onCompleted();
+    }
+  }
+  flushWorkLog() {
+    if (this.mode === "work" && this.activeWorkSecondsAccumulated > 0) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+      const session = {
+        id: "session-" + Date.now(),
+        taskId: this.focusedTask ? this.focusedTask.id : void 0,
+        taskTitle: this.focusedTask ? this.focusedTask.title || "General Focus" : "General Focus",
+        type: "work",
+        durationSeconds: this.activeWorkSecondsAccumulated,
+        completedAt: Date.now(),
+        date: today
+      };
+      this.activeWorkSecondsAccumulated = 0;
+      this.onSessionComplete(session);
+    }
+  }
+  onCompleted() {
+    this.pause();
+    this.flushWorkLog();
+    const settings = this.settingsGetter();
+    if (settings.soundFilePath && settings.soundFilePath.trim() !== "") {
+      if (this.playAudioCallback) {
+        this.playAudioCallback(settings.soundFilePath.trim());
+      }
+    }
+    this.mode = this.mode === "work" ? "break" : "work";
+    if (this.mode === "break" && this.onBreakStartCallback) {
+      this.onBreakStartCallback();
+    }
+    this.resetTimer();
+    if (settings.autoStartBreak && this.mode === "break") {
+      this.start();
+    }
+  }
+  notifySettingsUpdated() {
+    if (!this.isRunning) {
+      this.resetTimer();
+    }
+  }
+  notifyState() {
+    this.onStateChange(this.getState());
+  }
+};
+
 // src/settings.ts
 var import_obsidian5 = require("obsidian");
 var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
@@ -1289,21 +1287,24 @@ var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
 };
 
 // src/main.ts
+var DEFAULT_SETTINGS = {
+  workDurationMinutes: 40,
+  breakDurationMinutes: 10,
+  dataDirectory: "calendar-data",
+  autoStartBreak: true,
+  soundFilePath: ""
+};
 var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
+    this.statusBarItem = null;
     this.isAutoStarted = false;
   }
   async onload() {
     await this.loadSettings();
     this.storage = new StorageManager(this.app, () => this.settings);
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.addClass("focus-calendar-status-bar");
-    this.statusBarItem.style.cursor = "pointer";
-    this.statusBarItem.addEventListener("click", () => {
-      this.pomodoro.togglePlayPause();
-    });
     this.pomodoro = new PomodoroManager(
       () => this.settings,
       (state) => {
@@ -1343,6 +1344,10 @@ var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
     this.addSettingTab(new FocusCalendarSettingTab(this.app, this));
     this.registerEvent(
       this.app.workspace.on("omnirecall:drill-complete", async (data) => {
+        if (this.isAutoStarted) {
+          this.endAutoStudySession();
+          return;
+        }
         const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
         await this.storage.logPomodoroSession({
           id: "drill-" + Date.now(),
@@ -1356,6 +1361,10 @@ var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("omnirecall:review-complete", async (data) => {
+        if (this.isAutoStarted) {
+          this.endAutoStudySession();
+          return;
+        }
         const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
         await this.storage.logPomodoroSession({
           id: "review-" + Date.now(),
@@ -1392,22 +1401,21 @@ var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
     this.statusBarItem.setText(`${statusIcon} ${timeFormatted} [${taskTitle}]`);
   }
   startAutoStudySession(title) {
-    const state = this.pomodoro.getState();
-    if (state.isRunning) {
-      return false;
-    }
     const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
     this.pomodoro.setFocusedTask({
       id: "auto-" + Date.now(),
       title,
+      startTime: "00:00",
+      endTime: "00:00",
       date: today,
-      time: (/* @__PURE__ */ new Date()).toTimeString().substring(0, 5),
-      durationMinutes: 40,
-      category: "Study",
-      completed: false
+      type: "task",
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     });
     this.isAutoStarted = true;
-    this.pomodoro.start();
+    if (!this.pomodoro.getIsRunning()) {
+      this.pomodoro.start();
+    }
     return true;
   }
   endAutoStudySession() {

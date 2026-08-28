@@ -59,10 +59,16 @@ export class PomodoroManager {
   }
 
   public setFocusedTask(task: CalendarEntry | null) {
-    if (this.isRunning) {
+    if (this.focusedTask?.id === task?.id) return;
+
+    if (this.isRunning && this.mode === 'work') {
       this.flushWorkLog();
     }
     this.focusedTask = task;
+    if (!task && this.mode === 'work' && this.isRunning) {
+      this.pause();
+      new Notice('⏸️ Pomodoro timer paused: Task focus cleared.', 3000);
+    }
     this.notifyState();
   }
 

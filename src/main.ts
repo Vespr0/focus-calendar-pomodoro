@@ -1,27 +1,31 @@
 import { Plugin, WorkspaceLeaf, TFile } from 'obsidian';
-import { FocusCalendarSettings, DEFAULT_SETTINGS, PomodoroLogSession } from './types';
+import { FocusCalendarView, VIEW_TYPE_FOCUS_CALENDAR } from './views/CalendarView';
 import { StorageManager } from './storage';
 import { PomodoroManager } from './pomodoro';
-import { FocusCalendarView, VIEW_TYPE_FOCUS_CALENDAR } from './views/CalendarView';
 import { FocusCalendarSettingTab } from './settings';
+import { CalendarEntry, FocusCalendarSettings, PomodoroLogSession } from './types';
+
+const DEFAULT_SETTINGS: FocusCalendarSettings = {
+  workDurationMinutes: 40,
+  breakDurationMinutes: 10,
+  dataDirectory: 'calendar-data',
+  autoStartBreak: true,
+  soundFilePath: ''
+};
 
 export default class FocusCalendarPlugin extends Plugin {
   settings: FocusCalendarSettings = DEFAULT_SETTINGS;
   storage!: StorageManager;
   pomodoro!: PomodoroManager;
-  statusBarItem!: HTMLElement;
+  private statusBarItem: HTMLElement | null = null;
   private isAutoStarted: boolean = false;
 
   async onload() {
     await this.loadSettings();
 
     this.storage = new StorageManager(this.app, () => this.settings);
+
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.addClass('focus-calendar-status-bar');
-    this.statusBarItem.style.cursor = 'pointer';
-    this.statusBarItem.addEventListener('click', () => {
-      this.pomodoro.togglePlayPause();
-    });
 
     this.pomodoro = new PomodoroManager(
       () => this.settings,
@@ -69,6 +73,11 @@ export default class FocusCalendarPlugin extends Plugin {
     // Register inter-plugin workspace events
     this.registerEvent(
       (this.app.workspace as any).on('omnirecall:drill-complete', async (data: any) => {
+        // If Pomodoro auto-study session was running, it already logged elapsed time on pause
+        if (this.isAutoStarted) {
+          this.endAutoStudySession();
+          return;
+        }
         const today = new Date().toISOString().substring(0, 10);
         await this.storage.logPomodoroSession({
           id: 'drill-' + Date.now(),
@@ -83,6 +92,10 @@ export default class FocusCalendarPlugin extends Plugin {
 
     this.registerEvent(
       (this.app.workspace as any).on('omnirecall:review-complete', async (data: any) => {
+        if (this.isAutoStarted) {
+          this.endAutoStudySession();
+          return;
+        }
         const today = new Date().toISOString().substring(0, 10);
         await this.storage.logPomodoroSession({
           id: 'review-' + Date.now(),
@@ -121,24 +134,24 @@ export default class FocusCalendarPlugin extends Plugin {
   }
 
   public startAutoStudySession(title: string): boolean {
-    const state = this.pomodoro.getState();
-    if (state.isRunning) {
-      return false; // Already running, passively attach
-    }
-
     const today = new Date().toISOString().substring(0, 10);
+    
+    // Switch focus target smoothly. setFocusedTask flushes prior active task seconds.
     this.pomodoro.setFocusedTask({
       id: 'auto-' + Date.now(),
       title,
+      startTime: '00:00',
+      endTime: '00:00',
       date: today,
-      time: new Date().toTimeString().substring(0, 5),
-      durationMinutes: 40,
-      category: 'Study',
-      completed: false
+      type: 'task',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     });
 
     this.isAutoStarted = true;
-    this.pomodoro.start();
+    if (!this.pomodoro.getIsRunning()) {
+      this.pomodoro.start();
+    }
     return true;
   }
 
