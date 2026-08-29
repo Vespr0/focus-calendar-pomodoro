@@ -133,6 +133,7 @@ export class FocusCalendarView extends ItemView {
     if (this.viewMode === 'week') {
       const weekStart = this.getMondayOfWeek(this.currentDate);
       this.weekComponent = new WeekViewRenderComponent(
+        this.app,
         viewAreaContainer,
         weekStart,
         this.entries,

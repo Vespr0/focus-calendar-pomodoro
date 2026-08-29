@@ -10,7 +10,8 @@ const DEFAULT_SETTINGS: FocusCalendarSettings = {
   breakDurationMinutes: 10,
   dataDirectory: 'calendar-data',
   autoStartBreak: true,
-  soundFilePath: ''
+  focusEndSoundPath: '',
+  breakEndSoundPath: ''
 };
 
 export default class FocusCalendarPlugin extends Plugin {
@@ -80,7 +81,8 @@ export default class FocusCalendarPlugin extends Plugin {
       const today = new Date().toISOString().substring(0, 10);
       await this.storage.logPomodoroSession({
         id: 'drill-' + Date.now(),
-        taskTitle: `[Drill] ${data.title || 'Exercise'}`,
+        taskId: 'focus-drills',
+        taskTitle: 'Drills',
         type: 'work',
         durationSeconds: data.timeSec || 0,
         completedAt: Date.now(),
@@ -96,7 +98,8 @@ export default class FocusCalendarPlugin extends Plugin {
       const today = new Date().toISOString().substring(0, 10);
       await this.storage.logPomodoroSession({
         id: 'review-' + Date.now(),
-        taskTitle: `[Flashcards] ${data.title || 'Review Queue'}`,
+        taskId: 'focus-flashcards',
+        taskTitle: 'Flashcards',
         type: 'work',
         durationSeconds: data.timeSec || 0,
         completedAt: Date.now(),
@@ -105,9 +108,7 @@ export default class FocusCalendarPlugin extends Plugin {
     };
 
     this.registerEvent((this.app.workspace as any).on('spaced-repetition:drill-complete', handleDrillComplete));
-    this.registerEvent((this.app.workspace as any).on('omnirecall:drill-complete', handleDrillComplete));
     this.registerEvent((this.app.workspace as any).on('spaced-repetition:review-complete', handleReviewComplete));
-    this.registerEvent((this.app.workspace as any).on('omnirecall:review-complete', handleReviewComplete));
 
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -128,16 +129,65 @@ export default class FocusCalendarPlugin extends Plugin {
     const mins = Math.floor(state.timeLeftSeconds / 60);
     const secs = state.timeLeftSeconds % 60;
     const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    const taskTitle = state.focusedTask ? state.focusedTask.title : state.mode.toUpperCase();
+    const taskTitle = state.focusedTask ? state.focusedTask.title : (state.mode === 'work' ? 'WORK' : 'BREAK');
     const statusIcon = state.isRunning ? '⏱️' : '⏸️';
 
     this.statusBarItem.setText(`${statusIcon} ${timeFormatted} [${taskTitle}]`);
   }
 
-  public startAutoStudySession(title: string): boolean {
+  public startAutoFlashcardSession(): boolean {
     const today = new Date().toISOString().substring(0, 10);
-    
-    // Switch focus target smoothly. setFocusedTask flushes prior active task seconds.
+    this.pomodoro.setFocusedTask({
+      id: 'focus-flashcards',
+      title: 'Flashcards',
+      startTime: '00:00',
+      endTime: '00:00',
+      date: today,
+      type: 'task',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    this.isAutoStarted = true;
+    if (!this.pomodoro.getIsRunning()) {
+      this.pomodoro.start();
+    }
+    return true;
+  }
+
+  public startAutoDrillSession(): boolean {
+    const today = new Date().toISOString().substring(0, 10);
+    // If there is already a focused task, keep it so pomodoro drains into it without changing name!
+    if (!this.pomodoro.getFocusedTask()) {
+      this.pomodoro.setFocusedTask({
+        id: 'focus-drills',
+        title: 'Drills',
+        startTime: '00:00',
+        endTime: '00:00',
+        date: today,
+        type: 'task',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+
+    this.isAutoStarted = true;
+    if (!this.pomodoro.getIsRunning()) {
+      this.pomodoro.start();
+    }
+    return true;
+  }
+
+  public startAutoStudySession(title: string): boolean {
+    const lower = (title || '').toLowerCase();
+    if (lower.includes('flashcard')) {
+      return this.startAutoFlashcardSession();
+    }
+    if (lower.includes('drill')) {
+      return this.startAutoDrillSession();
+    }
+
+    const today = new Date().toISOString().substring(0, 10);
     this.pomodoro.setFocusedTask({
       id: 'auto-' + Date.now(),
       title,

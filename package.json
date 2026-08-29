@@ -1,6 +1,6 @@
 {
   "name": "focus-calendar-pomodoro",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Visual grid calendar with integrated Pomodoro timer, task focus tracking, and Syncthing-friendly vault storage.",
   "main": "main.js",
   "scripts": {

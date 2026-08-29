@@ -172,12 +172,12 @@ export class PomodoroManager {
 
     // Play distinct MP3 sound for Focus completion vs Break completion
     if (completedMode === 'work') {
-      const soundPath = (settings.focusEndSoundPath || settings.soundFilePath || '').trim();
+      const soundPath = (settings.focusEndSoundPath || '').trim();
       if (soundPath !== '' && this.playAudioCallback) {
         this.playAudioCallback(soundPath);
       }
     } else {
-      const soundPath = (settings.breakEndSoundPath || settings.soundFilePath || '').trim();
+      const soundPath = (settings.breakEndSoundPath || '').trim();
       if (soundPath !== '' && this.playAudioCallback) {
         this.playAudioCallback(soundPath);
       }

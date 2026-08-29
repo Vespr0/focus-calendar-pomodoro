@@ -119,16 +119,6 @@ export class StorageManager {
     this.isLocalSaving = true;
     await this.app.vault.adapter.write(path, JSON.stringify(logs, null, 2));
     setTimeout(() => { this.isLocalSaving = false; }, 500);
-
-    if (session.taskId && session.type === 'work') {
-      const entries = await this.loadEntriesForMonth(yearMonth);
-      const entry = entries.find(e => e.id === session.taskId);
-      if (entry) {
-        entry.actualSecondsSpent = (entry.actualSecondsSpent || 0) + session.durationSeconds;
-        entry.updatedAt = Date.now();
-        await this.saveEntriesForMonth(yearMonth, entries);
-      }
-    }
   }
 
   public async loadPomodoroLogsForMonth(yearMonth: string): Promise<PomodoroLogSession[]> {

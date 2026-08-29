@@ -173,9 +173,21 @@ export class MonthViewRenderComponent {
 
     this.pomoLogs.forEach(log => {
       if (log.type !== 'work' || !log.date || !log.date.startsWith(monthPrefix)) return;
-      const title = (log.taskTitle || '').trim();
-      if (!title || title.toLowerCase() === 'general focus') return;
-      const normKey = title.toLowerCase();
+      let rawTitle = (log.taskTitle || '').trim();
+      if (!rawTitle || rawTitle.toLowerCase() === 'general focus') return;
+
+      const lower = rawTitle.toLowerCase();
+      let displayTitle = rawTitle;
+      let normKey = lower;
+
+      if (log.taskId === 'focus-drills' || lower === 'drills' || lower.startsWith('[drill]') || lower.endsWith('drills') || lower.includes('drill:')) {
+        displayTitle = 'Drills';
+        normKey = 'drills';
+      } else if (log.taskId === 'focus-flashcards' || lower === 'flashcards' || lower.startsWith('[flashcard]') || lower.includes('flashcard')) {
+        displayTitle = 'Flashcards';
+        normKey = 'flashcards';
+      }
+
       const secs = log.durationSeconds || 0;
       if (secs <= 0) return;
 
@@ -185,9 +197,9 @@ export class MonthViewRenderComponent {
         activityMap.get(normKey)!.totalSeconds += secs;
       } else {
         activityMap.set(normKey, {
-          displayTitle: title,
+          displayTitle: displayTitle,
           totalSeconds: secs,
-          color: this.getTaskColor(title)
+          color: this.getTaskColor(displayTitle)
         });
       }
     });

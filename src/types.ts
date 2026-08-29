@@ -3,11 +3,11 @@ export type EntryType = 'task' | 'event';
 export interface CalendarEntry {
   id: string;
   title: string;
+  description?: string; // Optional description for task/event
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm (24h format, e.g. "09:30")
   endTime: string;   // HH:mm (24h format, e.g. "10:30")
   type: EntryType;   // 'task' (pastel blue) or 'event' (green)
-  actualSecondsSpent?: number; // Accumulated actual pomodoro focus time in seconds
   createdAt: number;
   updatedAt: number;
 }
@@ -32,7 +32,6 @@ export interface FocusCalendarSettings {
   breakDurationMinutes: number; // default 10
   dataDirectory: string; // default "calendar-data"
   autoStartBreak: boolean;
-  soundFilePath: string; // legacy fallback
   focusEndSoundPath: string; // Vault relative path to MP3 when focus ends (e.g. "Sounds/bell.mp3")
   breakEndSoundPath: string; // Vault relative path to MP3 when break ends (e.g. "Sounds/chime.mp3")
 }
@@ -42,7 +41,6 @@ export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   breakDurationMinutes: 10,
   dataDirectory: 'calendar-data',
   autoStartBreak: false,
-  soundFilePath: '',
   focusEndSoundPath: '',
   breakEndSoundPath: ''
 };

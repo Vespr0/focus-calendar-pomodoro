@@ -67,7 +67,7 @@ export class FocusCalendarSettingTab extends PluginSettingTab {
       .setDesc('Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.')
       .addText(text => text
         .setPlaceholder('Sounds/bell.mp3')
-        .setValue(this.plugin.settings.focusEndSoundPath || this.plugin.settings.soundFilePath || '')
+        .setValue(this.plugin.settings.focusEndSoundPath || '')
         .onChange(async (value) => {
           this.plugin.settings.focusEndSoundPath = value.trim();
           await this.plugin.saveSettings();
@@ -76,7 +76,7 @@ export class FocusCalendarSettingTab extends PluginSettingTab {
         .setButtonText('🔊 Test')
         .setTooltip('Play preview of the Focus completion sound')
         .onClick(async () => {
-          const path = (this.plugin.settings.focusEndSoundPath || this.plugin.settings.soundFilePath || '').trim();
+          const path = (this.plugin.settings.focusEndSoundPath || '').trim();
           if (!path) {
             new Notice('⚠️ No sound file path specified.');
             return;

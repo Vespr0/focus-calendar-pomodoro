@@ -79,7 +79,8 @@ export class PomodoroHeaderComponent {
     const state = this.pomodoroManager.getState();
     const isWork = state.mode === 'work';
     const accentColor = isWork ? 'var(--fcp-red-accent, #ef4444)' : 'var(--fcp-blue-accent, #3b82f6)';
-    const modeLabel = isWork ? 'WORK' : 'BREAK';
+    const focusedTitle = state.focusedTask?.title?.trim();
+    const modeLabel = isWork ? (focusedTitle ? focusedTitle : 'WORK') : 'BREAK';
 
     // Left spacer to balance flex layout and center the pomodoro controls
     this.containerEl.createDiv('fcp-pomo-left-spacer');
@@ -127,6 +128,7 @@ export class PomodoroHeaderComponent {
 
     const modeBadge = controlsDiv.createDiv('fcp-mode-badge');
     modeBadge.textContent = modeLabel;
+    modeBadge.setAttribute('title', modeLabel);
     modeBadge.style.color = accentColor;
     modeBadge.style.borderColor = accentColor;
 

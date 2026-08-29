@@ -1,4 +1,4 @@
-import { Menu } from 'obsidian';
+import { App, Menu, Modal, Setting } from 'obsidian';
 import { CalendarEntry } from '../types';
 
 export interface WeekViewCallbacks {
@@ -9,7 +9,117 @@ export interface WeekViewCallbacks {
   getFocusedTaskId: () => string | undefined;
 }
 
+export class TaskEditModal extends Modal {
+  private entry: CalendarEntry;
+  private onSave: (entry: CalendarEntry) => Promise<void>;
+  private onDelete: (entry: CalendarEntry) => Promise<void>;
+
+  constructor(
+    app: App,
+    entry: CalendarEntry,
+    onSave: (entry: CalendarEntry) => Promise<void>,
+    onDelete: (entry: CalendarEntry) => Promise<void>
+  ) {
+    super(app);
+    this.entry = entry;
+    this.onSave = onSave;
+    this.onDelete = onDelete;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('fcp-edit-modal');
+
+    contentEl.createEl('h2', { text: this.entry.title ? 'Edit Task / Event' : 'New Task / Event' });
+
+    let titleVal = this.entry.title || '';
+    let descVal = this.entry.description || '';
+    let typeVal = this.entry.type || 'task';
+    let startTimeVal = this.entry.startTime || '09:00';
+    let endTimeVal = this.entry.endTime || '10:00';
+
+    new Setting(contentEl)
+      .setName('Title')
+      .setDesc('Title of the task or event.')
+      .addText(text => text
+        .setPlaceholder('Enter title...')
+        .setValue(titleVal)
+        .onChange(v => { titleVal = v; }));
+
+    new Setting(contentEl)
+      .setName('Description')
+      .setDesc('Optional notes or description.')
+      .addTextArea(text => {
+        text.setPlaceholder('Enter description / notes...')
+          .setValue(descVal)
+          .onChange(v => { descVal = v; });
+        text.inputEl.rows = 4;
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.resize = 'vertical';
+      });
+
+    new Setting(contentEl)
+      .setName('Type')
+      .setDesc('Task (Pastel Blue) or Event (Green).')
+      .addDropdown(drop => drop
+        .addOption('task', 'Task (Pastel Blue)')
+        .addOption('event', 'Event (Green)')
+        .setValue(typeVal)
+        .onChange(v => { typeVal = v as 'task' | 'event'; }));
+
+    new Setting(contentEl)
+      .setName('Time Range')
+      .setDesc('Start and End time (HH:mm).')
+      .addText(text => text
+        .setPlaceholder('09:00')
+        .setValue(startTimeVal)
+        .onChange(v => { startTimeVal = v; }))
+      .addText(text => text
+        .setPlaceholder('10:00')
+        .setValue(endTimeVal)
+        .onChange(v => { endTimeVal = v; }));
+
+    const buttonRow = contentEl.createDiv('fcp-modal-button-row');
+
+    const deleteBtn = buttonRow.createEl('button', {
+      cls: 'mod-warning fcp-modal-delete-btn',
+      text: 'Delete'
+    });
+    deleteBtn.onclick = async () => {
+      this.close();
+      await this.onDelete(this.entry);
+    };
+
+    const rightBtns = buttonRow.createDiv('fcp-modal-right-btns');
+
+    const cancelBtn = rightBtns.createEl('button', { text: 'Cancel' });
+    cancelBtn.onclick = () => {
+      this.close();
+    };
+
+    const saveBtn = rightBtns.createEl('button', {
+      cls: 'mod-cta',
+      text: 'Save'
+    });
+    saveBtn.onclick = async () => {
+      this.entry.title = titleVal.trim() || 'Untitled';
+      this.entry.description = descVal.trim() || undefined;
+      this.entry.type = typeVal;
+      this.entry.startTime = startTimeVal.trim() || this.entry.startTime;
+      this.entry.endTime = endTimeVal.trim() || this.entry.endTime;
+      this.close();
+      await this.onSave(this.entry);
+    };
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 export class WeekViewRenderComponent {
+  private app: App;
   private containerEl: HTMLElement;
   private weekStart: Date;
   private entries: CalendarEntry[];
@@ -23,11 +133,13 @@ export class WeekViewRenderComponent {
   private readonly slotHeight = 26; // pixels per 30 minutes (52 / 2)
 
   constructor(
+    app: App,
     containerEl: HTMLElement,
     weekStart: Date,
     entries: CalendarEntry[],
     callbacks: WeekViewCallbacks
   ) {
+    this.app = app;
     this.containerEl = containerEl;
     this.weekStart = weekStart;
     this.entries = entries;
@@ -128,13 +240,15 @@ export class WeekViewRenderComponent {
 
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
         const newCard = this.renderEntryCard(colEl, newEntry);
-        this.enableCardInlineEdit(newCard, newEntry);
+        this.layoutDayColumn(dateStr);
+        this.openEditModal(newEntry, newCard);
       });
 
       const dayEntries = this.entries.filter(e => e.date === dateStr);
       dayEntries.forEach(entry => {
         this.renderEntryCard(colEl, entry);
       });
+      this.layoutDayColumn(dateStr);
     });
 
     // Align header grid columns with body grid columns accounting for scrollbar width
@@ -146,6 +260,134 @@ export class WeekViewRenderComponent {
         headerRow.style.paddingRight = '0px';
       }
     }, 0);
+  }
+
+  /**
+   * Notion Calendar-style Overlap Clustering & Multi-Column Layout Algorithm
+   */
+  private calculateDayOverlapLayout(entries: CalendarEntry[]): Map<string, { colIndex: number; totalCols: number }> {
+    const layoutMap = new Map<string, { colIndex: number; totalCols: number }>();
+    if (entries.length === 0) return layoutMap;
+
+    interface EntryInterval {
+      entry: CalendarEntry;
+      startMins: number;
+      endMins: number;
+    }
+
+    const intervals: EntryInterval[] = entries.map(e => {
+      const startMins = this.snapTo30Min(this.timeStrToMinutes(e.startTime));
+      let endMins = this.snapTo30Min(this.timeStrToMinutes(e.endTime));
+      if (endMins <= startMins) endMins = startMins + 30;
+      return { entry: e, startMins, endMins };
+    });
+
+    // Sort intervals by start time ascending, then by duration descending (longer events first)
+    intervals.sort((a, b) => {
+      if (a.startMins !== b.startMins) return a.startMins - b.startMins;
+      return (b.endMins - b.startMins) - (a.endMins - a.startMins);
+    });
+
+    // Cluster into connected components of overlapping intervals
+    const clusters: EntryInterval[][] = [];
+    let currentCluster: EntryInterval[] = [];
+    let clusterMaxEnd = -1;
+
+    for (const item of intervals) {
+      if (currentCluster.length === 0) {
+        currentCluster.push(item);
+        clusterMaxEnd = item.endMins;
+      } else if (item.startMins < clusterMaxEnd) {
+        currentCluster.push(item);
+        clusterMaxEnd = Math.max(clusterMaxEnd, item.endMins);
+      } else {
+        clusters.push(currentCluster);
+        currentCluster = [item];
+        clusterMaxEnd = item.endMins;
+      }
+    }
+    if (currentCluster.length > 0) {
+      clusters.push(currentCluster);
+    }
+
+    // For each cluster, greedily assign columns
+    for (const cluster of clusters) {
+      const columnEndTimes: number[] = [];
+      const itemCols: { entryId: string; colIndex: number }[] = [];
+
+      for (const item of cluster) {
+        let placedCol = -1;
+        for (let c = 0; c < columnEndTimes.length; c++) {
+          if (columnEndTimes[c] <= item.startMins) {
+            placedCol = c;
+            columnEndTimes[c] = item.endMins;
+            break;
+          }
+        }
+        if (placedCol === -1) {
+          placedCol = columnEndTimes.length;
+          columnEndTimes.push(item.endMins);
+        }
+        itemCols.push({ entryId: item.entry.id, colIndex: placedCol });
+      }
+
+      const totalCols = Math.max(1, columnEndTimes.length);
+      for (const ic of itemCols) {
+        layoutMap.set(ic.entryId, { colIndex: ic.colIndex, totalCols });
+      }
+    }
+
+    return layoutMap;
+  }
+
+  public layoutDayColumn(dateStr: string) {
+    const colEl = this.containerEl.querySelector(`.fcp-day-column[data-date="${dateStr}"]`) as HTMLElement;
+    if (!colEl) return;
+
+    const dayEntries = this.entries.filter(e => e.date === dateStr);
+    const layoutMap = this.calculateDayOverlapLayout(dayEntries);
+
+    const cards = colEl.querySelectorAll('.fcp-entry-card') as NodeListOf<HTMLElement>;
+    cards.forEach(card => {
+      const id = card.dataset.id;
+      if (!id) return;
+      const layout = layoutMap.get(id);
+      if (layout) {
+        const { colIndex, totalCols } = layout;
+        if (totalCols <= 1) {
+          card.style.left = '4px';
+          card.style.width = 'calc(100% - 8px)';
+          card.style.right = 'auto';
+        } else {
+          const widthPct = 100 / totalCols;
+          const leftPct = colIndex * widthPct;
+          card.style.left = `calc(${leftPct}% + 2px)`;
+          card.style.width = `calc(${widthPct}% - 4px)`;
+          card.style.right = 'auto';
+        }
+      }
+    });
+  }
+
+  private renderCardContent(card: HTMLElement, entry: CalendarEntry) {
+    let content = card.querySelector('.fcp-entry-content') as HTMLElement;
+    if (!content) {
+      content = card.createDiv('fcp-entry-content');
+    } else {
+      content.empty();
+    }
+
+    const titleEl = content.createDiv('fcp-entry-title');
+    titleEl.textContent = entry.title || 'Untitled';
+
+    if (entry.description && entry.description.trim()) {
+      const descEl = content.createDiv('fcp-entry-desc');
+      descEl.textContent = entry.description.trim();
+      descEl.setAttribute('title', entry.description.trim());
+    }
+
+    const timeEl = content.createDiv('fcp-entry-time');
+    timeEl.textContent = `${entry.startTime} - ${entry.endTime}`;
   }
 
   private renderEntryCard(columnEl: HTMLElement, entry: CalendarEntry): HTMLElement {
@@ -179,11 +421,7 @@ export class WeekViewRenderComponent {
     card.createDiv('fcp-resize-handle top');
     card.createDiv('fcp-resize-handle bottom');
 
-    const content = card.createDiv('fcp-entry-content');
-    content.innerHTML = `
-      <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
-      <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
-    `;
+    this.renderCardContent(card, entry);
 
     card.addEventListener('click', (e) => {
       if (card.classList.contains('is-editing')) return;
@@ -193,7 +431,7 @@ export class WeekViewRenderComponent {
 
     card.addEventListener('dblclick', (e) => {
       e.stopPropagation();
-      this.enableCardInlineEdit(card, entry);
+      this.openEditModal(entry, card);
     });
 
     card.addEventListener('contextmenu', (e) => {
@@ -202,9 +440,17 @@ export class WeekViewRenderComponent {
       e.stopPropagation();
 
       const menu = new Menu();
-      
+
       menu.addItem(item => {
-        item.setTitle('Rename Entry')
+        item.setTitle('Edit Details')
+            .setIcon('lucide-edit')
+            .onClick(() => {
+              this.openEditModal(entry, card);
+            });
+      });
+
+      menu.addItem(item => {
+        item.setTitle('Quick Rename')
             .setIcon('lucide-edit-3')
             .onClick(() => {
               this.enableCardInlineEdit(card, entry);
@@ -217,7 +463,7 @@ export class WeekViewRenderComponent {
             .setIcon('lucide-refresh-cw')
             .onClick(async () => {
               entry.type = entry.type === 'task' ? 'event' : 'task';
-              card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? 'is-focused' : ''}`;
+              card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? 'is-focused' : ''} ${parseFloat(card.style.height) <= this.slotHeight ? 'is-short' : ''}`;
               await this.callbacks.onEntryUpdate(entry);
             });
       });
@@ -238,6 +484,7 @@ export class WeekViewRenderComponent {
             .onClick(async () => {
               card.remove();
               await this.callbacks.onEntryDelete(entry);
+              this.layoutDayColumn(entry.date);
             });
       });
 
@@ -246,6 +493,35 @@ export class WeekViewRenderComponent {
 
     this.setupCardDrag(card, entry);
     return card;
+  }
+
+  private openEditModal(entry: CalendarEntry, card: HTMLElement) {
+    new TaskEditModal(
+      this.app,
+      entry,
+      async (updatedEntry) => {
+        this.renderCardContent(card, updatedEntry);
+        card.className = `fcp-entry-card type-${updatedEntry.type} ${this.callbacks.getFocusedTaskId() === updatedEntry.id ? 'is-focused' : ''} ${parseFloat(card.style.height) <= this.slotHeight ? 'is-short' : ''}`;
+
+        const startMins = this.snapTo30Min(this.timeStrToMinutes(updatedEntry.startTime));
+        let endMins = this.snapTo30Min(this.timeStrToMinutes(updatedEntry.endTime));
+        if (endMins <= startMins) endMins = startMins + 30;
+        const clampedStart = Math.max(this.startHour * 60, Math.min(startMins, this.endHour * 60));
+        const clampedEnd = Math.max(clampedStart + 30, Math.min(endMins, this.endHour * 60));
+        const topPx = Math.round((clampedStart - this.startHour * 60) / 30) * this.slotHeight;
+        const heightPx = Math.max(1, Math.round((clampedEnd - clampedStart) / 30)) * this.slotHeight;
+        card.style.top = `${topPx}px`;
+        card.style.height = `${heightPx}px`;
+
+        await this.callbacks.onEntryUpdate(updatedEntry);
+        this.layoutDayColumn(updatedEntry.date);
+      },
+      async (deletedEntry) => {
+        card.remove();
+        await this.callbacks.onEntryDelete(deletedEntry);
+        this.layoutDayColumn(deletedEntry.date);
+      }
+    ).open();
   }
 
   private enableCardInlineEdit(card: HTMLElement, entry: CalendarEntry) {
@@ -280,10 +556,7 @@ export class WeekViewRenderComponent {
         await this.callbacks.onEntryUpdate(entry);
       }
 
-      content.innerHTML = `
-        <div class="fcp-entry-title">${this.escapeHtml(entry.title || 'Untitled')}</div>
-        <div class="fcp-entry-time">${entry.startTime} - ${entry.endTime}</div>
-      `;
+      this.renderCardContent(card, entry);
     };
 
     input.addEventListener('blur', () => {
@@ -412,6 +685,7 @@ export class WeekViewRenderComponent {
 
       if (!hasMoved) return;
 
+      const oldDate = entry.date;
       const finalTop = parseFloat(card.style.top) || 0;
       const finalHeight = parseFloat(card.style.height) || this.slotHeight;
 
@@ -430,6 +704,10 @@ export class WeekViewRenderComponent {
       entry.endTime = this.minutesToTimeStr(endMins);
 
       await this.callbacks.onEntryUpdate(entry);
+      this.layoutDayColumn(oldDate);
+      if (entry.date !== oldDate) {
+        this.layoutDayColumn(entry.date);
+      }
     };
 
     card.addEventListener('mousedown', onMouseDown);

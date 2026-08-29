@@ -182,6 +182,11 @@
   border: 1px solid currentColor;
   display: inline-block;
   text-align: center;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
 }
 
 .fcp-btn-group {
@@ -393,17 +398,16 @@
 /* Entry Cards */
 .fcp-entry-card {
   position: absolute;
-  left: 4px;
-  right: 4px;
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid transparent;
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  transition: left 0.15s ease, width 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   z-index: 2;
   user-select: none;
+  min-width: 0;
 }
 
 .fcp-entry-card.type-task {
@@ -492,6 +496,20 @@
   min-width: 0;
 }
 
+.fcp-entry-desc {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.2;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fcp-entry-card.is-short .fcp-entry-desc {
+  display: none;
+}
+
 .fcp-entry-time {
   font-size: 0.68rem;
   opacity: 0.8;
@@ -516,6 +534,30 @@
   font-size: 0.8rem;
   color: var(--text-normal);
   box-sizing: border-box;
+}
+
+/* Edit Task Modal */
+.fcp-edit-modal {
+  max-width: 520px;
+  width: 100%;
+}
+
+.fcp-modal-button-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.fcp-modal-right-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.fcp-modal-delete-btn {
+  color: var(--text-error, #ef4444);
 }
 
 /* MONTH VIEW STYLES */
