@@ -3,7 +3,7 @@ import { CalendarEntry } from '../types';
 
 export interface WeekViewCallbacks {
   onEntryCreate: (date: string, startTime: string, endTime: string) => Promise<CalendarEntry>;
-  onEntryUpdate: (entry: CalendarEntry) => Promise<void>;
+  onEntryUpdate: (entry: CalendarEntry, oldDate?: string) => Promise<void>;
   onEntryDelete: (entry: CalendarEntry) => Promise<void>;
   onTaskFocus: (entry: CalendarEntry) => void;
   getFocusedTaskId: () => string | undefined;
@@ -190,11 +190,20 @@ export class WeekViewRenderComponent {
 
     // Time Labels Gutter
     const timeGutter = gridBody.createDiv('fcp-time-gutter');
-    for (let h = this.startHour; h <= this.endHour; h++) {
+    timeGutter.style.height = `${this.totalHours * this.hourHeight}px`;
+
+    for (let h = 0; h <= this.totalHours; h++) {
+      const hourNum = this.startHour + h;
       const timeLabel = timeGutter.createDiv('fcp-time-label');
-      timeLabel.style.height = `${this.hourHeight}px`;
-      const hourStr = h < 24 ? `${h.toString().padStart(2, '0')}:00` : '24:00';
+      timeLabel.style.top = `${h * this.hourHeight}px`;
+      const hourStr = hourNum < 24 ? `${hourNum.toString().padStart(2, '0')}:00` : '24:00';
       timeLabel.textContent = hourStr;
+
+      if (h === 0) {
+        timeLabel.addClass('is-first');
+      } else if (h === this.totalHours) {
+        timeLabel.addClass('is-last');
+      }
     }
 
     // Grid Columns Container
@@ -204,14 +213,15 @@ export class WeekViewRenderComponent {
     // Hour and Half-Hour lines (30-minute visual slots)
     const gridLines = columnsContainer.createDiv('fcp-grid-lines');
     for (let h = 0; h < this.totalHours; h++) {
-      const line = gridLines.createDiv('fcp-grid-line');
-      line.style.top = `${h * this.hourHeight}px`;
-      line.style.height = `${this.slotHeight}px`;
+      const hourLine = gridLines.createDiv('fcp-grid-line-hour');
+      hourLine.style.top = `${h * this.hourHeight}px`;
 
       const halfLine = gridLines.createDiv('fcp-grid-line-half');
       halfLine.style.top = `${(h + 0.5) * this.hourHeight}px`;
-      halfLine.style.height = `${this.slotHeight}px`;
     }
+    // Bottom boundary line for the final hour (24:00)
+    const bottomLine = gridLines.createDiv('fcp-grid-line-hour');
+    bottomLine.style.top = `${this.totalHours * this.hourHeight}px`;
 
     // 7 Day Columns
     weekDates.forEach((date, colIndex) => {
@@ -252,14 +262,15 @@ export class WeekViewRenderComponent {
     });
 
     // Align header grid columns with body grid columns accounting for scrollbar width
-    setTimeout(() => {
+    const syncHeaderScrollbar = () => {
       const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
-      if (scrollbarWidth > 0) {
-        headerRow.style.paddingRight = `${scrollbarWidth}px`;
-      } else {
-        headerRow.style.paddingRight = '0px';
-      }
-    }, 0);
+      headerRow.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '0px';
+    };
+    setTimeout(syncHeaderScrollbar, 0);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => syncHeaderScrollbar());
+      ro.observe(gridBody);
+    }
   }
 
   /**
@@ -703,7 +714,7 @@ export class WeekViewRenderComponent {
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
 
-      await this.callbacks.onEntryUpdate(entry);
+      await this.callbacks.onEntryUpdate(entry, oldDate);
       this.layoutDayColumn(oldDate);
       if (entry.date !== oldDate) {
         this.layoutDayColumn(entry.date);

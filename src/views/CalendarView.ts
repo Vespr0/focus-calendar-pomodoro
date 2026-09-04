@@ -3,7 +3,7 @@ import { ViewMode, CalendarEntry, PomodoroLogSession, ImminentEventInfo } from '
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
 import { PomodoroHeaderComponent } from './PomodoroHeader';
-import { WeekViewRenderComponent } from './WeekViewRender';
+import { WeekViewRenderComponent, TaskEditModal } from './WeekViewRender';
 import { MonthViewRenderComponent } from './MonthViewRender';
 
 export const VIEW_TYPE_FOCUS_CALENDAR = 'focus-calendar-pomodoro-view';
@@ -46,9 +46,34 @@ export class FocusCalendarView extends ItemView {
   }
 
   public async refreshData(): Promise<void> {
-    const yearMonth = this.getYearMonthString(this.currentDate);
-    this.entries = await this.storage.loadEntriesForMonth(yearMonth);
-    this.pomoLogs = await this.storage.loadPomodoroLogsForMonth(yearMonth);
+    const targetDate = this.currentDate;
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth();
+
+    // Load previous, current, and next month so cross-month weeks
+    // and month-view trailing/leading days are completely populated.
+    const prevMonthDate = new Date(year, month - 1, 1);
+    const nextMonthDate = new Date(year, month + 1, 1);
+
+    const monthsToLoad = [
+      this.getYearMonthString(prevMonthDate),
+      this.getYearMonthString(targetDate),
+      this.getYearMonthString(nextMonthDate)
+    ];
+
+    const entryMap = new Map<string, CalendarEntry>();
+    const logMap = new Map<string, PomodoroLogSession>();
+
+    for (const ym of monthsToLoad) {
+      const monthEntries = await this.storage.loadEntriesForMonth(ym);
+      monthEntries.forEach(e => entryMap.set(e.id, e));
+
+      const monthLogs = await this.storage.loadPomodoroLogsForMonth(ym);
+      monthLogs.forEach(l => logMap.set(l.id, l));
+    }
+
+    this.entries = Array.from(entryMap.values());
+    this.pomoLogs = Array.from(logMap.values());
   }
 
   public renderView(): void {
@@ -91,7 +116,26 @@ export class FocusCalendarView extends ItemView {
     };
 
     const dateTitle = leftNav.createDiv('fcp-nav-date-title');
-    dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    if (this.viewMode === 'week') {
+      const weekStart = this.getMondayOfWeek(this.currentDate);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
+      const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
+      const startYear = weekStart.getFullYear();
+      const endYear = weekEnd.getFullYear();
+
+      if (startYear !== endYear) {
+        dateTitle.textContent = `${startMonth} ${startYear} – ${endMonth} ${endYear}`;
+      } else if (startMonth !== endMonth) {
+        dateTitle.textContent = `${startMonth} – ${endMonth} ${startYear}`;
+      } else {
+        dateTitle.textContent = weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+    } else {
+      dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
 
     const modeSwitch = navBar.createDiv('fcp-mode-switch');
     const weekBtn = modeSwitch.createEl('button', {
@@ -153,8 +197,15 @@ export class FocusCalendarView extends ItemView {
             await this.storage.saveEntry(newEntry);
             return newEntry;
           },
-          onEntryUpdate: async (entry) => {
+          onEntryUpdate: async (entry, oldDate) => {
             entry.updatedAt = Date.now();
+            if (oldDate && oldDate !== entry.date) {
+              const oldYearMonth = oldDate.substring(0, 7);
+              const newYearMonth = entry.date.substring(0, 7);
+              if (oldYearMonth !== newYearMonth) {
+                await this.storage.deleteEntry(entry.id, oldDate);
+              }
+            }
             await this.storage.saveEntry(entry);
             this.updateHeaderStats();
           },
@@ -195,7 +246,20 @@ export class FocusCalendarView extends ItemView {
             this.renderView();
           },
           onEventClick: (entry) => {
-            // Event clicked
+            new TaskEditModal(
+              this.app,
+              entry,
+              async (updated) => {
+                await this.storage.saveEntry(updated);
+                await this.refreshData();
+                this.renderView();
+              },
+              async (deleted) => {
+                await this.storage.deleteEntry(deleted.id, deleted.date);
+                await this.refreshData();
+                this.renderView();
+              }
+            ).open();
           }
         }
       );
@@ -208,8 +272,15 @@ export class FocusCalendarView extends ItemView {
     }
   }
 
+  private formatDateIso(d: Date): string {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   private getImminentEvent(): ImminentEventInfo | null {
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = this.formatDateIso(new Date());
     const todayTime = new Date(todayStr + 'T00:00:00').getTime();
 
     const futureEvents = this.entries.filter(e => e.type === 'event' && e.date >= todayStr);
@@ -245,8 +316,8 @@ export class FocusCalendarView extends ItemView {
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
 
-      const weekStartIso = weekStart.toISOString().substring(0, 10);
-      const weekEndIso = weekEnd.toISOString().substring(0, 10);
+      const weekStartIso = this.formatDateIso(weekStart);
+      const weekEndIso = this.formatDateIso(weekEnd);
 
       this.pomoLogs.forEach(log => {
         if (log.type === 'work' && log.date >= weekStartIso && log.date < weekEndIso) {
@@ -254,8 +325,9 @@ export class FocusCalendarView extends ItemView {
         }
       });
     } else {
+      const currentYearMonth = this.getYearMonthString(this.currentDate);
       this.pomoLogs.forEach(log => {
-        if (log.type === 'work') {
+        if (log.type === 'work' && log.date && log.date.startsWith(currentYearMonth)) {
           totalSeconds += log.durationSeconds;
         }
       });

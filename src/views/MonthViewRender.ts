@@ -84,6 +84,8 @@ export class MonthViewRenderComponent {
     const daysInPrevMonth = new Date(this.currentYear, this.currentMonth, 0).getDate();
 
     const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
+    const numRows = totalCells / 7;
+    monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
     const todayIso = new Date().toISOString().substring(0, 10);
 
     for (let i = 0; i < totalCells; i++) {
@@ -132,7 +134,9 @@ export class MonthViewRenderComponent {
         const eventsContainer = cellEl.createDiv('fcp-month-events-container');
 
         dayEvents.forEach(evt => {
-          const evtEl = eventsContainer.createDiv('fcp-month-event-item');
+          const evtEl = eventsContainer.createDiv(`fcp-month-event-item type-${evt.type || 'event'}`);
+          const timeSuffix = evt.startTime ? ` (${evt.startTime} - ${evt.endTime})` : '';
+          evtEl.title = `${evt.title || 'Event'}${timeSuffix}`;
           evtEl.innerHTML = `
             <span class="fcp-evt-dot"></span>
             <span class="fcp-evt-title">${this.escapeHtml(evt.title || 'Event')}</span>

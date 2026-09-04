@@ -283,23 +283,30 @@ var WeekViewRenderComponent = class {
     });
     const gridBody = this.containerEl.createDiv("fcp-week-grid-body");
     const timeGutter = gridBody.createDiv("fcp-time-gutter");
-    for (let h = this.startHour; h <= this.endHour; h++) {
+    timeGutter.style.height = `${this.totalHours * this.hourHeight}px`;
+    for (let h = 0; h <= this.totalHours; h++) {
+      const hourNum = this.startHour + h;
       const timeLabel = timeGutter.createDiv("fcp-time-label");
-      timeLabel.style.height = `${this.hourHeight}px`;
-      const hourStr = h < 24 ? `${h.toString().padStart(2, "0")}:00` : "24:00";
+      timeLabel.style.top = `${h * this.hourHeight}px`;
+      const hourStr = hourNum < 24 ? `${hourNum.toString().padStart(2, "0")}:00` : "24:00";
       timeLabel.textContent = hourStr;
+      if (h === 0) {
+        timeLabel.addClass("is-first");
+      } else if (h === this.totalHours) {
+        timeLabel.addClass("is-last");
+      }
     }
     const columnsContainer = gridBody.createDiv("fcp-columns-container");
     columnsContainer.style.height = `${this.totalHours * this.hourHeight}px`;
     const gridLines = columnsContainer.createDiv("fcp-grid-lines");
     for (let h = 0; h < this.totalHours; h++) {
-      const line = gridLines.createDiv("fcp-grid-line");
-      line.style.top = `${h * this.hourHeight}px`;
-      line.style.height = `${this.slotHeight}px`;
+      const hourLine = gridLines.createDiv("fcp-grid-line-hour");
+      hourLine.style.top = `${h * this.hourHeight}px`;
       const halfLine = gridLines.createDiv("fcp-grid-line-half");
       halfLine.style.top = `${(h + 0.5) * this.hourHeight}px`;
-      halfLine.style.height = `${this.slotHeight}px`;
     }
+    const bottomLine = gridLines.createDiv("fcp-grid-line-hour");
+    bottomLine.style.top = `${this.totalHours * this.hourHeight}px`;
     weekDates.forEach((date, colIndex) => {
       const dateStr = this.formatDateIso(date);
       const colEl = columnsContainer.createDiv("fcp-day-column");
@@ -328,14 +335,15 @@ var WeekViewRenderComponent = class {
       });
       this.layoutDayColumn(dateStr);
     });
-    setTimeout(() => {
+    const syncHeaderScrollbar = () => {
       const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
-      if (scrollbarWidth > 0) {
-        headerRow.style.paddingRight = `${scrollbarWidth}px`;
-      } else {
-        headerRow.style.paddingRight = "0px";
-      }
-    }, 0);
+      headerRow.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : "0px";
+    };
+    setTimeout(syncHeaderScrollbar, 0);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => syncHeaderScrollbar());
+      ro.observe(gridBody);
+    }
   }
   /**
    * Notion Calendar-style Overlap Clustering & Multi-Column Layout Algorithm
@@ -700,7 +708,7 @@ var WeekViewRenderComponent = class {
       }
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
-      await this.callbacks.onEntryUpdate(entry);
+      await this.callbacks.onEntryUpdate(entry, oldDate);
       this.layoutDayColumn(oldDate);
       if (entry.date !== oldDate) {
         this.layoutDayColumn(entry.date);
@@ -796,6 +804,8 @@ var MonthViewRenderComponent = class {
     const daysInMonth = new Date(this.currentYear, this.currentMonth + 1, 0).getDate();
     const daysInPrevMonth = new Date(this.currentYear, this.currentMonth, 0).getDate();
     const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
+    const numRows = totalCells / 7;
+    monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
     const todayIso = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
     for (let i = 0; i < totalCells; i++) {
       let dayNumber;
@@ -834,7 +844,9 @@ var MonthViewRenderComponent = class {
       if (dayEvents.length > 0) {
         const eventsContainer = cellEl.createDiv("fcp-month-events-container");
         dayEvents.forEach((evt) => {
-          const evtEl = eventsContainer.createDiv("fcp-month-event-item");
+          const evtEl = eventsContainer.createDiv(`fcp-month-event-item type-${evt.type || "event"}`);
+          const timeSuffix = evt.startTime ? ` (${evt.startTime} - ${evt.endTime})` : "";
+          evtEl.title = `${evt.title || "Event"}${timeSuffix}`;
           evtEl.innerHTML = `
             <span class="fcp-evt-dot"></span>
             <span class="fcp-evt-title">${this.escapeHtml(evt.title || "Event")}</span>
@@ -972,9 +984,26 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     this.renderView();
   }
   async refreshData() {
-    const yearMonth = this.getYearMonthString(this.currentDate);
-    this.entries = await this.storage.loadEntriesForMonth(yearMonth);
-    this.pomoLogs = await this.storage.loadPomodoroLogsForMonth(yearMonth);
+    const targetDate = this.currentDate;
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth();
+    const prevMonthDate = new Date(year, month - 1, 1);
+    const nextMonthDate = new Date(year, month + 1, 1);
+    const monthsToLoad = [
+      this.getYearMonthString(prevMonthDate),
+      this.getYearMonthString(targetDate),
+      this.getYearMonthString(nextMonthDate)
+    ];
+    const entryMap = /* @__PURE__ */ new Map();
+    const logMap = /* @__PURE__ */ new Map();
+    for (const ym of monthsToLoad) {
+      const monthEntries = await this.storage.loadEntriesForMonth(ym);
+      monthEntries.forEach((e) => entryMap.set(e.id, e));
+      const monthLogs = await this.storage.loadPomodoroLogsForMonth(ym);
+      monthLogs.forEach((l) => logMap.set(l.id, l));
+    }
+    this.entries = Array.from(entryMap.values());
+    this.pomoLogs = Array.from(logMap.values());
   }
   renderView() {
     const container = this.containerEl.children[1];
@@ -1011,7 +1040,24 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
       this.renderView();
     };
     const dateTitle = leftNav.createDiv("fcp-nav-date-title");
-    dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    if (this.viewMode === "week") {
+      const weekStart = this.getMondayOfWeek(this.currentDate);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const startMonth = weekStart.toLocaleDateString("en-US", { month: "short" });
+      const endMonth = weekEnd.toLocaleDateString("en-US", { month: "short" });
+      const startYear = weekStart.getFullYear();
+      const endYear = weekEnd.getFullYear();
+      if (startYear !== endYear) {
+        dateTitle.textContent = `${startMonth} ${startYear} \u2013 ${endMonth} ${endYear}`;
+      } else if (startMonth !== endMonth) {
+        dateTitle.textContent = `${startMonth} \u2013 ${endMonth} ${startYear}`;
+      } else {
+        dateTitle.textContent = weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      }
+    } else {
+      dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
     const modeSwitch = navBar.createDiv("fcp-mode-switch");
     const weekBtn = modeSwitch.createEl("button", {
       cls: `fcp-switch-btn ${this.viewMode === "week" ? "active" : ""}`,
@@ -1067,8 +1113,15 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
             await this.storage.saveEntry(newEntry);
             return newEntry;
           },
-          onEntryUpdate: async (entry) => {
+          onEntryUpdate: async (entry, oldDate) => {
             entry.updatedAt = Date.now();
+            if (oldDate && oldDate !== entry.date) {
+              const oldYearMonth = oldDate.substring(0, 7);
+              const newYearMonth = entry.date.substring(0, 7);
+              if (oldYearMonth !== newYearMonth) {
+                await this.storage.deleteEntry(entry.id, oldDate);
+              }
+            }
             await this.storage.saveEntry(entry);
             this.updateHeaderStats();
           },
@@ -1114,6 +1167,20 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
             this.renderView();
           },
           onEventClick: (entry) => {
+            new TaskEditModal(
+              this.app,
+              entry,
+              async (updated) => {
+                await this.storage.saveEntry(updated);
+                await this.refreshData();
+                this.renderView();
+              },
+              async (deleted) => {
+                await this.storage.deleteEntry(deleted.id, deleted.date);
+                await this.refreshData();
+                this.renderView();
+              }
+            ).open();
           }
         }
       );
@@ -1124,8 +1191,14 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
       this.headerComponent.update(this.viewMode, this.calculateTotalHours(), this.getImminentEvent());
     }
   }
+  formatDateIso(d) {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const day = d.getDate().toString().padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
   getImminentEvent() {
-    const todayStr = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    const todayStr = this.formatDateIso(/* @__PURE__ */ new Date());
     const todayTime = (/* @__PURE__ */ new Date(todayStr + "T00:00:00")).getTime();
     const futureEvents = this.entries.filter((e) => e.type === "event" && e.date >= todayStr);
     if (futureEvents.length === 0)
@@ -1155,16 +1228,17 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
       const weekStart = this.getMondayOfWeek(this.currentDate);
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
-      const weekStartIso = weekStart.toISOString().substring(0, 10);
-      const weekEndIso = weekEnd.toISOString().substring(0, 10);
+      const weekStartIso = this.formatDateIso(weekStart);
+      const weekEndIso = this.formatDateIso(weekEnd);
       this.pomoLogs.forEach((log) => {
         if (log.type === "work" && log.date >= weekStartIso && log.date < weekEndIso) {
           totalSeconds += log.durationSeconds;
         }
       });
     } else {
+      const currentYearMonth = this.getYearMonthString(this.currentDate);
       this.pomoLogs.forEach((log) => {
-        if (log.type === "work") {
+        if (log.type === "work" && log.date && log.date.startsWith(currentYearMonth)) {
           totalSeconds += log.durationSeconds;
         }
       });
