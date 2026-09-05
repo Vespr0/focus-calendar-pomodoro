@@ -1,5 +1,5 @@
 import { App, Menu, Modal, Setting } from 'obsidian';
-import { CalendarEntry } from '../types';
+import { CalendarEntry, TimeWindow } from '../types';
 
 export interface WeekViewCallbacks {
   onEntryCreate: (date: string, startTime: string, endTime: string) => Promise<CalendarEntry>;
@@ -13,17 +13,25 @@ export class TaskEditModal extends Modal {
   private entry: CalendarEntry;
   private onSave: (entry: CalendarEntry) => Promise<void>;
   private onDelete: (entry: CalendarEntry) => Promise<void>;
+  private windows: TimeWindow[];
+  private isActionTaken = false;
+  private isNew = false;
+  private currentTitleVal = '';
 
   constructor(
     app: App,
     entry: CalendarEntry,
     onSave: (entry: CalendarEntry) => Promise<void>,
-    onDelete: (entry: CalendarEntry) => Promise<void>
+    onDelete: (entry: CalendarEntry) => Promise<void>,
+    windows: TimeWindow[] = []
   ) {
     super(app);
     this.entry = entry;
     this.onSave = onSave;
     this.onDelete = onDelete;
+    this.windows = windows;
+    this.isNew = !entry.title;
+    this.currentTitleVal = entry.title || '';
   }
 
   onOpen() {
@@ -31,89 +39,99 @@ export class TaskEditModal extends Modal {
     contentEl.empty();
     contentEl.addClass('fcp-edit-modal');
 
-    contentEl.createEl('h2', { text: this.entry.title ? 'Edit Task / Event' : 'New Task / Event' });
+    contentEl.createEl('h2', { text: this.entry.title ? 'EDIT ENTRY' : 'NEW ENTRY' });
 
     let titleVal = this.entry.title || '';
     let descVal = this.entry.description || '';
     let typeVal = this.entry.type || 'task';
-    let startTimeVal = this.entry.startTime || '09:00';
-    let endTimeVal = this.entry.endTime || '10:00';
+    let windowIdVal = this.entry.windowId || '';
 
     new Setting(contentEl)
       .setName('Title')
-      .setDesc('Title of the task or event.')
       .addText(text => text
-        .setPlaceholder('Enter title...')
+        .setPlaceholder('Title')
         .setValue(titleVal)
-        .onChange(v => { titleVal = v; }));
+        .onChange(v => {
+          titleVal = v;
+          this.currentTitleVal = v;
+        }));
 
     new Setting(contentEl)
       .setName('Description')
-      .setDesc('Optional notes or description.')
       .addTextArea(text => {
-        text.setPlaceholder('Enter description / notes...')
+        text.setPlaceholder('Notes...')
           .setValue(descVal)
           .onChange(v => { descVal = v; });
-        text.inputEl.rows = 4;
+        text.inputEl.rows = 3;
         text.inputEl.style.width = '100%';
         text.inputEl.style.resize = 'vertical';
       });
 
     new Setting(contentEl)
       .setName('Type')
-      .setDesc('Task (Pastel Blue) or Event (Green).')
       .addDropdown(drop => drop
-        .addOption('task', 'Task (Pastel Blue)')
-        .addOption('event', 'Event (Green)')
+        .addOption('task', 'Task')
+        .addOption('event', 'Event')
+        .addOption('crucial', 'Crucial')
         .setValue(typeVal)
-        .onChange(v => { typeVal = v as 'task' | 'event'; }));
+        .onChange(v => { typeVal = v as 'task' | 'event' | 'crucial'; }));
 
-    new Setting(contentEl)
-      .setName('Time Range')
-      .setDesc('Start and End time (HH:mm).')
-      .addText(text => text
-        .setPlaceholder('09:00')
-        .setValue(startTimeVal)
-        .onChange(v => { startTimeVal = v; }))
-      .addText(text => text
-        .setPlaceholder('10:00')
-        .setValue(endTimeVal)
-        .onChange(v => { endTimeVal = v; }));
+    const eligibleWindows = this.windows.filter(w => !this.entry.date || (this.entry.date >= w.startDate && this.entry.date <= w.endDate));
+    if (eligibleWindows.length > 0) {
+      new Setting(contentEl)
+        .setName('Time Window')
+        .setDesc('Assign to an aligned window, or leave unassigned.')
+        .addDropdown(drop => {
+          drop.addOption('none', 'None (Unassigned)');
+          eligibleWindows.forEach(w => drop.addOption(w.id, w.title));
+          drop.setValue(windowIdVal || 'none');
+          drop.onChange(v => { windowIdVal = v; });
+        });
+    }
 
     const buttonRow = contentEl.createDiv('fcp-modal-button-row');
 
     const deleteBtn = buttonRow.createEl('button', {
       cls: 'mod-warning fcp-modal-delete-btn',
-      text: 'Delete'
+      text: 'DELETE'
     });
     deleteBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.close();
       await this.onDelete(this.entry);
     };
 
     const rightBtns = buttonRow.createDiv('fcp-modal-right-btns');
 
-    const cancelBtn = rightBtns.createEl('button', { text: 'Cancel' });
-    cancelBtn.onclick = () => {
+    const cancelBtn = rightBtns.createEl('button', { text: 'CANCEL' });
+    cancelBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.close();
+      if (this.isNew && !this.currentTitleVal.trim()) {
+        await this.onDelete(this.entry);
+      }
     };
 
     const saveBtn = rightBtns.createEl('button', {
       cls: 'mod-cta',
-      text: 'Save'
+      text: 'SAVE'
     });
     saveBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.entry.title = titleVal.trim() || 'Untitled';
       this.entry.description = descVal.trim() || undefined;
       this.entry.type = typeVal;
-      this.entry.startTime = startTimeVal.trim() || this.entry.startTime;
-      this.entry.endTime = endTimeVal.trim() || this.entry.endTime;
+      const targetWin = (windowIdVal && windowIdVal !== 'none') ? this.windows.find(w => w.id === windowIdVal) : undefined;
+      this.entry.windowId = (targetWin && this.entry.date >= targetWin.startDate && this.entry.date <= targetWin.endDate) ? targetWin.id : undefined;
       this.close();
       await this.onSave(this.entry);
     };
   }
 
   onClose() {
+    if (this.isNew && !this.isActionTaken && !this.currentTitleVal.trim()) {
+      this.onDelete(this.entry);
+    }
     this.contentEl.empty();
   }
 }
@@ -124,6 +142,7 @@ export class WeekViewRenderComponent {
   private weekStart: Date;
   private entries: CalendarEntry[];
   private callbacks: WeekViewCallbacks;
+  private windows: TimeWindow[];
 
   // Constants for 30-minute precision snapping
   private readonly startHour = 5; // 05:00
@@ -137,20 +156,54 @@ export class WeekViewRenderComponent {
     containerEl: HTMLElement,
     weekStart: Date,
     entries: CalendarEntry[],
-    callbacks: WeekViewCallbacks
+    callbacks: WeekViewCallbacks,
+    windows: TimeWindow[] = []
   ) {
     this.app = app;
     this.containerEl = containerEl;
     this.weekStart = weekStart;
     this.entries = entries;
     this.callbacks = callbacks;
+    this.windows = windows;
     this.render();
   }
 
-  public update(weekStart: Date, entries: CalendarEntry[]) {
+  public update(weekStart: Date, entries: CalendarEntry[], windows?: TimeWindow[]) {
     this.weekStart = weekStart;
     this.entries = entries;
+    if (windows) this.windows = windows;
     this.render();
+  }
+
+  public deleteEntryLocal(entryId: string) {
+    this.entries = this.entries.filter(e => e.id !== entryId);
+  }
+
+  public upsertEntryLocal(entry: CalendarEntry) {
+    const idx = this.entries.findIndex(e => e.id === entry.id);
+    if (idx >= 0) {
+      this.entries[idx] = entry;
+    } else {
+      this.entries.push(entry);
+    }
+  }
+
+  private openAllDayEditModal(entry: CalendarEntry) {
+    new TaskEditModal(
+      this.app,
+      entry,
+      async (updated) => {
+        this.upsertEntryLocal(updated);
+        await this.callbacks.onEntryUpdate(updated);
+        this.render();
+      },
+      async (deleted) => {
+        this.deleteEntryLocal(deleted.id);
+        await this.callbacks.onEntryDelete(deleted);
+        this.render();
+      },
+      this.windows
+    ).open();
   }
 
   private render() {
@@ -183,6 +236,75 @@ export class WeekViewRenderComponent {
         <div class="fcp-day-name">${dayName}</div>
         <div class="fcp-day-num">${dayNum}</div>
       `;
+    });
+
+    // All-Day Row (for untimed tasks, events, and crucial items)
+    const allDayRow = this.containerEl.createDiv('fcp-week-all-day-row');
+    allDayRow.createDiv('fcp-all-day-gutter-label').textContent = 'ALL-DAY';
+    const allDayGrid = allDayRow.createDiv('fcp-week-all-day-grid');
+
+    weekDates.forEach((date) => {
+      const dateStr = this.formatDateIso(date);
+      const cell = allDayGrid.createDiv('fcp-all-day-cell');
+      cell.dataset.date = dateStr;
+
+      const dayAllDay = this.entries.filter(e => e.date === dateStr && (e.allDay || !e.startTime));
+      dayAllDay.forEach(entry => {
+        const isCrucial = entry.type === 'crucial';
+        const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
+        const badge = cell.createDiv(`fcp-all-day-badge type-${entry.type} ${isFocused ? 'is-focused' : ''}`);
+        badge.dataset.id = entry.id;
+        badge.title = `${entry.title}${entry.description ? '\n' + entry.description : ''}`;
+        badge.innerHTML = `
+          ${isCrucial ? '<span class="fcp-all-day-diamond">◆</span>' : ''}
+          <span class="fcp-all-day-title">${this.escapeHtml(entry.title)}</span>
+        `;
+        badge.onclick = (e) => {
+          e.stopPropagation();
+          this.callbacks.onTaskFocus(entry);
+          this.openAllDayEditModal(entry);
+        };
+        badge.ondblclick = (e) => {
+          e.stopPropagation();
+          this.openAllDayEditModal(entry);
+        };
+        badge.oncontextmenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openAllDayEditModal(entry);
+        };
+      });
+
+      cell.onclick = async (e) => {
+        if ((e.target as HTMLElement).closest('.fcp-all-day-badge')) return;
+        const newEntry = await this.callbacks.onEntryCreate(dateStr, '', '');
+        newEntry.allDay = true;
+        this.upsertEntryLocal(newEntry);
+        const isCrucial = newEntry.type === 'crucial';
+        const isFocused = this.callbacks.getFocusedTaskId() === newEntry.id;
+        const badge = cell.createDiv(`fcp-all-day-badge type-${newEntry.type} ${isFocused ? 'is-focused' : ''}`);
+        badge.dataset.id = newEntry.id;
+        badge.title = '';
+        badge.innerHTML = `
+          ${isCrucial ? '<span class="fcp-all-day-diamond">◆</span>' : ''}
+          <span class="fcp-all-day-title"></span>
+        `;
+        badge.onclick = (ev) => {
+          ev.stopPropagation();
+          this.callbacks.onTaskFocus(newEntry);
+          this.openAllDayEditModal(newEntry);
+        };
+        badge.ondblclick = (ev) => {
+          ev.stopPropagation();
+          this.openAllDayEditModal(newEntry);
+        };
+        badge.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.openAllDayEditModal(newEntry);
+        };
+        this.enableBadgeInlineEdit(badge, newEntry);
+      };
     });
 
     // Main Scrollable Grid Body
@@ -251,11 +373,11 @@ export class WeekViewRenderComponent {
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
         const newCard = this.renderEntryCard(colEl, newEntry);
         this.layoutDayColumn(dateStr);
-        this.openEditModal(newEntry, newCard);
+        this.enableCardInlineEdit(newCard, newEntry);
       });
 
-      const dayEntries = this.entries.filter(e => e.date === dateStr);
-      dayEntries.forEach(entry => {
+      const timedDayEntries = this.entries.filter(e => e.date === dateStr && !e.allDay && Boolean(e.startTime));
+      timedDayEntries.forEach(entry => {
         this.renderEntryCard(colEl, entry);
       });
       this.layoutDayColumn(dateStr);
@@ -264,7 +386,9 @@ export class WeekViewRenderComponent {
     // Align header grid columns with body grid columns accounting for scrollbar width
     const syncHeaderScrollbar = () => {
       const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
-      headerRow.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '0px';
+      const pad = scrollbarWidth > 0 ? `${scrollbarWidth}px` : '0px';
+      headerRow.style.paddingRight = pad;
+      allDayRow.style.paddingRight = pad;
     };
     setTimeout(syncHeaderScrollbar, 0);
     if (typeof ResizeObserver !== 'undefined') {
@@ -278,7 +402,8 @@ export class WeekViewRenderComponent {
    */
   private calculateDayOverlapLayout(entries: CalendarEntry[]): Map<string, { colIndex: number; totalCols: number }> {
     const layoutMap = new Map<string, { colIndex: number; totalCols: number }>();
-    if (entries.length === 0) return layoutMap;
+    const timed = entries.filter(e => !e.allDay && Boolean(e.startTime));
+    if (timed.length === 0) return layoutMap;
 
     interface EntryInterval {
       entry: CalendarEntry;
@@ -286,9 +411,9 @@ export class WeekViewRenderComponent {
       endMins: number;
     }
 
-    const intervals: EntryInterval[] = entries.map(e => {
-      const startMins = this.snapTo30Min(this.timeStrToMinutes(e.startTime));
-      let endMins = this.snapTo30Min(this.timeStrToMinutes(e.endTime));
+    const intervals: EntryInterval[] = timed.map(e => {
+      const startMins = this.snapTo30Min(this.timeStrToMinutes(e.startTime || '09:00'));
+      let endMins = this.snapTo30Min(this.timeStrToMinutes(e.endTime || '10:00'));
       if (endMins <= startMins) endMins = startMins + 30;
       return { entry: e, startMins, endMins };
     });
@@ -355,7 +480,7 @@ export class WeekViewRenderComponent {
     const colEl = this.containerEl.querySelector(`.fcp-day-column[data-date="${dateStr}"]`) as HTMLElement;
     if (!colEl) return;
 
-    const dayEntries = this.entries.filter(e => e.date === dateStr);
+    const dayEntries = this.entries.filter(e => e.date === dateStr && !e.allDay && Boolean(e.startTime));
     const layoutMap = this.calculateDayOverlapLayout(dayEntries);
 
     const cards = colEl.querySelectorAll('.fcp-entry-card') as NodeListOf<HTMLElement>;
@@ -389,7 +514,11 @@ export class WeekViewRenderComponent {
     }
 
     const titleEl = content.createDiv('fcp-entry-title');
-    titleEl.textContent = entry.title || 'Untitled';
+    if (entry.type === 'crucial') {
+      titleEl.innerHTML = `<span class="fcp-crucial-icon">◆</span> ${this.escapeHtml(entry.title || 'Untitled')}`;
+    } else {
+      titleEl.textContent = entry.title || 'Untitled';
+    }
 
     if (entry.description && entry.description.trim()) {
       const descEl = content.createDiv('fcp-entry-desc');
@@ -469,21 +598,20 @@ export class WeekViewRenderComponent {
       });
 
       menu.addItem(item => {
-        const nextType = entry.type === 'task' ? 'Event (Green)' : 'Task (Pastel Blue)';
-        item.setTitle(`Change to ${nextType}`)
+        const types: Array<{ key: 'task' | 'event' | 'crucial'; label: string }> = [
+          { key: 'task', label: 'Task (Pastel Blue)' },
+          { key: 'event', label: 'Event (Green)' },
+          { key: 'crucial', label: 'Crucial (Yellow)' }
+        ];
+        const nextIdx = (types.findIndex(t => t.key === entry.type) + 1) % types.length;
+        const next = types[nextIdx];
+        item.setTitle(`Change to ${next.label}`)
             .setIcon('lucide-refresh-cw')
             .onClick(async () => {
-              entry.type = entry.type === 'task' ? 'event' : 'task';
+              entry.type = next.key;
               card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? 'is-focused' : ''} ${parseFloat(card.style.height) <= this.slotHeight ? 'is-short' : ''}`;
+              this.renderCardContent(card, entry);
               await this.callbacks.onEntryUpdate(entry);
-            });
-      });
-
-      menu.addItem(item => {
-        item.setTitle('Focus Pomodoro Timer')
-            .setIcon('lucide-timer')
-            .onClick(() => {
-              this.callbacks.onTaskFocus(entry);
             });
       });
 
@@ -493,6 +621,7 @@ export class WeekViewRenderComponent {
         item.setTitle('Delete Entry')
             .setIcon('lucide-trash-2')
             .onClick(async () => {
+              this.deleteEntryLocal(entry.id);
               card.remove();
               await this.callbacks.onEntryDelete(entry);
               this.layoutDayColumn(entry.date);
@@ -511,6 +640,7 @@ export class WeekViewRenderComponent {
       this.app,
       entry,
       async (updatedEntry) => {
+        this.upsertEntryLocal(updatedEntry);
         this.renderCardContent(card, updatedEntry);
         card.className = `fcp-entry-card type-${updatedEntry.type} ${this.callbacks.getFocusedTaskId() === updatedEntry.id ? 'is-focused' : ''} ${parseFloat(card.style.height) <= this.slotHeight ? 'is-short' : ''}`;
 
@@ -528,10 +658,12 @@ export class WeekViewRenderComponent {
         this.layoutDayColumn(updatedEntry.date);
       },
       async (deletedEntry) => {
+        this.deleteEntryLocal(deletedEntry.id);
         card.remove();
         await this.callbacks.onEntryDelete(deletedEntry);
         this.layoutDayColumn(deletedEntry.date);
-      }
+      },
+      this.windows
     ).open();
   }
 
@@ -561,9 +693,26 @@ export class WeekViewRenderComponent {
       isFinished = true;
 
       card.removeClass('is-editing');
-      if (!cancelled) {
-        const newTitle = input.value.trim() || 'New Task';
+      if (cancelled) {
+        if (!entry.title) {
+          this.deleteEntryLocal(entry.id);
+          card.remove();
+          await this.callbacks.onEntryDelete(entry);
+          this.layoutDayColumn(entry.date);
+          return;
+        }
+      } else {
+        const val = input.value.trim();
+        if (!val && !entry.title) {
+          this.deleteEntryLocal(entry.id);
+          card.remove();
+          await this.callbacks.onEntryDelete(entry);
+          this.layoutDayColumn(entry.date);
+          return;
+        }
+        const newTitle = val || entry.title || 'New Task';
         entry.title = newTitle;
+        this.upsertEntryLocal(entry);
         await this.callbacks.onEntryUpdate(entry);
       }
 
@@ -595,6 +744,76 @@ export class WeekViewRenderComponent {
     input.addEventListener('dblclick', (e) => e.stopPropagation());
   }
 
+  private enableBadgeInlineEdit(badge: HTMLElement, entry: CalendarEntry) {
+    const titleEl = badge.querySelector('.fcp-all-day-title') as HTMLElement;
+    if (!titleEl || badge.classList.contains('is-editing')) return;
+
+    badge.addClass('is-editing');
+    titleEl.innerHTML = '';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'fcp-inline-input';
+    input.value = entry.title || '';
+    titleEl.appendChild(input);
+
+    let isReady = false;
+    setTimeout(() => {
+      isReady = true;
+      input.focus();
+      input.select();
+    }, 100);
+
+    let isFinished = false;
+    const finishEdit = async (cancelled: boolean) => {
+      if (isFinished) return;
+      isFinished = true;
+
+      badge.removeClass('is-editing');
+      if (cancelled) {
+        if (!entry.title) {
+          this.deleteEntryLocal(entry.id);
+          badge.remove();
+          await this.callbacks.onEntryDelete(entry);
+          return;
+        }
+      } else {
+        const val = input.value.trim();
+        if (!val && !entry.title) {
+          this.deleteEntryLocal(entry.id);
+          badge.remove();
+          await this.callbacks.onEntryDelete(entry);
+          return;
+        }
+        entry.title = val || entry.title || 'New Task';
+        this.upsertEntryLocal(entry);
+        await this.callbacks.onEntryUpdate(entry);
+      }
+
+      titleEl.textContent = entry.title;
+      badge.title = `${entry.title}${entry.description ? '\n' + entry.description : ''}`;
+    };
+
+    input.addEventListener('blur', () => {
+      if (!isReady) return;
+      finishEdit(false);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finishEdit(false);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEdit(true);
+      }
+    });
+
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('dblclick', (e) => e.stopPropagation());
+  }
+
   private setupCardDrag(card: HTMLElement, entry: CalendarEntry) {
     let isDragging = false;
     let hasMoved = false;
@@ -602,6 +821,8 @@ export class WeekViewRenderComponent {
     let startY = 0;
     let startTop = 0;
     let startHeight = 0;
+    let isOverAllDay = false;
+    let targetAllDayCell: HTMLElement | null = null;
     const maxGridHeight = this.totalHours * this.hourHeight;
 
     const onMouseDown = (e: MouseEvent) => {
@@ -618,6 +839,8 @@ export class WeekViewRenderComponent {
 
       isDragging = true;
       hasMoved = false;
+      isOverAllDay = false;
+      targetAllDayCell = null;
       startY = e.clientY;
       startTop = parseFloat(card.style.top) || 0;
       startHeight = parseFloat(card.style.height) || this.slotHeight;
@@ -636,6 +859,31 @@ export class WeekViewRenderComponent {
       }
 
       const columnsContainer = this.containerEl.querySelector('.fcp-columns-container') as HTMLElement;
+      const allDayRow = this.containerEl.querySelector('.fcp-week-all-day-row') as HTMLElement;
+
+      isOverAllDay = false;
+      targetAllDayCell = null;
+
+      if (dragMode === 'move' && allDayRow) {
+        const allDayRect = allDayRow.getBoundingClientRect();
+        if (e.clientY <= allDayRect.bottom + 8) {
+          isOverAllDay = true;
+          const cells = Array.from(allDayRow.querySelectorAll('.fcp-all-day-cell')) as HTMLElement[];
+          for (const c of cells) {
+            const cr = c.getBoundingClientRect();
+            if (e.clientX >= cr.left && e.clientX <= cr.right) {
+              targetAllDayCell = c;
+              break;
+            }
+          }
+        }
+      }
+
+      const allDayCells = this.containerEl.querySelectorAll('.fcp-all-day-cell');
+      allDayCells.forEach(c => {
+        if (c === targetAllDayCell) c.addClass('is-drag-over');
+        else c.removeClass('is-drag-over');
+      });
 
       if (dragMode === 'move') {
         const rawTop = startTop + deltaY;
@@ -676,12 +924,17 @@ export class WeekViewRenderComponent {
           card.removeClass('is-short');
         }
 
-        const startMins = (this.startHour * 60) + Math.round(currentTop / this.slotHeight) * 30;
-        const endMins = startMins + Math.round(currentHeight / this.slotHeight) * 30;
-        
         const timeDiv = card.querySelector('.fcp-entry-time');
-        if (timeDiv) {
-          timeDiv.textContent = `${this.minutesToTimeStr(startMins)} - ${this.minutesToTimeStr(endMins)}`;
+        if (isOverAllDay) {
+          card.addClass('is-dropping-all-day');
+          if (timeDiv) timeDiv.textContent = 'Drop for all-day';
+        } else {
+          card.removeClass('is-dropping-all-day');
+          const startMins = (this.startHour * 60) + Math.round(currentTop / this.slotHeight) * 30;
+          const endMins = startMins + Math.round(currentHeight / this.slotHeight) * 30;
+          if (timeDiv) {
+            timeDiv.textContent = `${this.minutesToTimeStr(startMins)} - ${this.minutesToTimeStr(endMins)}`;
+          }
         }
       }
     };
@@ -690,6 +943,10 @@ export class WeekViewRenderComponent {
       if (!isDragging) return;
       isDragging = false;
       card.removeClass('is-dragging');
+      card.removeClass('is-dropping-all-day');
+
+      const allDayCells = this.containerEl.querySelectorAll('.fcp-all-day-cell');
+      allDayCells.forEach(c => c.removeClass('is-drag-over'));
 
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
@@ -697,6 +954,17 @@ export class WeekViewRenderComponent {
       if (!hasMoved) return;
 
       const oldDate = entry.date;
+
+      if (isOverAllDay && targetAllDayCell && targetAllDayCell.dataset.date) {
+        entry.date = targetAllDayCell.dataset.date;
+        entry.allDay = true;
+        entry.startTime = '';
+        entry.endTime = '';
+        await this.callbacks.onEntryUpdate(entry, oldDate);
+        this.render();
+        return;
+      }
+
       const finalTop = parseFloat(card.style.top) || 0;
       const finalHeight = parseFloat(card.style.height) || this.slotHeight;
 
@@ -711,6 +979,7 @@ export class WeekViewRenderComponent {
         entry.date = targetColEl.dataset.date;
       }
 
+      entry.allDay = false;
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
 
@@ -749,7 +1018,7 @@ export class WeekViewRenderComponent {
 
   public updateFocusedTask(focusedTaskId: string | null) {
     if (!this.containerEl) return;
-    const cards = this.containerEl.querySelectorAll('.fcp-entry-card');
+    const cards = this.containerEl.querySelectorAll('.fcp-entry-card, .fcp-all-day-badge');
     cards.forEach((cardEl) => {
       const htmlEl = cardEl as HTMLElement;
       if (htmlEl.dataset.id === focusedTaskId) {

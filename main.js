@@ -28,25 +28,24 @@ __export(main_exports, {
   default: () => FocusCalendarPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 
 // src/views/CalendarView.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
-  constructor(containerEl, pomodoroManager, viewMode, totalHours, imminentEvent = null) {
+  // in hours
+  constructor(containerEl, pomodoroManager, viewMode, totalHours) {
     this.containerEl = containerEl;
     this.pomodoroManager = pomodoroManager;
     this.viewMode = viewMode;
     this.totalHours = totalHours;
-    this.imminentEvent = imminentEvent;
     this.render();
   }
-  update(viewMode, totalHours, imminentEvent = null) {
+  update(viewMode, totalHours) {
     this.viewMode = viewMode;
     this.totalHours = totalHours;
-    this.imminentEvent = imminentEvent;
     this.render();
   }
   render() {
@@ -61,28 +60,12 @@ var PomodoroHeaderComponent = class {
     }
   }
   renderMonthHeader() {
-    const leftDiv = this.containerEl.createDiv("fcp-pomo-left-imminent");
-    if (this.imminentEvent) {
-      let daysStr = "";
-      if (this.imminentEvent.daysAway === 0) {
-        daysStr = "today";
-      } else if (this.imminentEvent.daysAway === 1) {
-        daysStr = "1 day away";
-      } else {
-        daysStr = `${this.imminentEvent.daysAway} days away`;
-      }
-      leftDiv.innerHTML = `
-        <span class="fcp-imminent-badge">UPCOMING EVENT</span>
-        <span class="fcp-imminent-text"><strong>${this.escapeHtml(this.imminentEvent.title)}</strong> is ${daysStr}</span>
-      `;
-    } else {
-      leftDiv.innerHTML = `<span class="fcp-imminent-text muted">No upcoming events</span>`;
-    }
+    this.containerEl.createDiv("fcp-pomo-left-spacer");
     const rightSection = this.containerEl.createDiv("fcp-pomo-right");
     const hoursCard = rightSection.createDiv("fcp-hours-card");
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
-      <div class="fcp-hours-sub">THIS MONTH</div>
+      <div class="fcp-hours-sub">This month</div>
     `;
   }
   renderWeekHeader() {
@@ -94,8 +77,8 @@ var PomodoroHeaderComponent = class {
     const modeLabel = isWork ? focusedTitle ? focusedTitle : "WORK" : "BREAK";
     this.containerEl.createDiv("fcp-pomo-left-spacer");
     const centerSection = this.containerEl.createDiv("fcp-pomo-center");
-    const svgSize = 64;
-    const strokeWidth = 5;
+    const svgSize = 52;
+    const strokeWidth = 4;
     const radius = (svgSize - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const progressRatio = state.totalDurationSeconds > 0 ? state.timeLeftSeconds / state.totalDurationSeconds : 0;
@@ -152,7 +135,7 @@ var PomodoroHeaderComponent = class {
     const hoursCard = rightSection.createDiv("fcp-hours-card");
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
-      <div class="fcp-hours-sub">THIS WEEK</div>
+      <div class="fcp-hours-sub">This week</div>
     `;
   }
   escapeHtml(str) {
@@ -165,76 +148,97 @@ var PomodoroHeaderComponent = class {
 // src/views/WeekViewRender.ts
 var import_obsidian = require("obsidian");
 var TaskEditModal = class extends import_obsidian.Modal {
-  constructor(app, entry, onSave, onDelete) {
+  constructor(app, entry, onSave, onDelete, windows = []) {
     super(app);
+    this.isActionTaken = false;
+    this.isNew = false;
+    this.currentTitleVal = "";
     this.entry = entry;
     this.onSave = onSave;
     this.onDelete = onDelete;
+    this.windows = windows;
+    this.isNew = !entry.title;
+    this.currentTitleVal = entry.title || "";
   }
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("fcp-edit-modal");
-    contentEl.createEl("h2", { text: this.entry.title ? "Edit Task / Event" : "New Task / Event" });
+    contentEl.createEl("h2", { text: this.entry.title ? "EDIT ENTRY" : "NEW ENTRY" });
     let titleVal = this.entry.title || "";
     let descVal = this.entry.description || "";
     let typeVal = this.entry.type || "task";
-    let startTimeVal = this.entry.startTime || "09:00";
-    let endTimeVal = this.entry.endTime || "10:00";
-    new import_obsidian.Setting(contentEl).setName("Title").setDesc("Title of the task or event.").addText((text) => text.setPlaceholder("Enter title...").setValue(titleVal).onChange((v) => {
+    let windowIdVal = this.entry.windowId || "";
+    new import_obsidian.Setting(contentEl).setName("Title").addText((text) => text.setPlaceholder("Title").setValue(titleVal).onChange((v) => {
       titleVal = v;
+      this.currentTitleVal = v;
     }));
-    new import_obsidian.Setting(contentEl).setName("Description").setDesc("Optional notes or description.").addTextArea((text) => {
-      text.setPlaceholder("Enter description / notes...").setValue(descVal).onChange((v) => {
+    new import_obsidian.Setting(contentEl).setName("Description").addTextArea((text) => {
+      text.setPlaceholder("Notes...").setValue(descVal).onChange((v) => {
         descVal = v;
       });
-      text.inputEl.rows = 4;
+      text.inputEl.rows = 3;
       text.inputEl.style.width = "100%";
       text.inputEl.style.resize = "vertical";
     });
-    new import_obsidian.Setting(contentEl).setName("Type").setDesc("Task (Pastel Blue) or Event (Green).").addDropdown((drop) => drop.addOption("task", "Task (Pastel Blue)").addOption("event", "Event (Green)").setValue(typeVal).onChange((v) => {
+    new import_obsidian.Setting(contentEl).setName("Type").addDropdown((drop) => drop.addOption("task", "Task").addOption("event", "Event").addOption("crucial", "Crucial").setValue(typeVal).onChange((v) => {
       typeVal = v;
     }));
-    new import_obsidian.Setting(contentEl).setName("Time Range").setDesc("Start and End time (HH:mm).").addText((text) => text.setPlaceholder("09:00").setValue(startTimeVal).onChange((v) => {
-      startTimeVal = v;
-    })).addText((text) => text.setPlaceholder("10:00").setValue(endTimeVal).onChange((v) => {
-      endTimeVal = v;
-    }));
+    const eligibleWindows = this.windows.filter((w) => !this.entry.date || this.entry.date >= w.startDate && this.entry.date <= w.endDate);
+    if (eligibleWindows.length > 0) {
+      new import_obsidian.Setting(contentEl).setName("Time Window").setDesc("Assign to an aligned window, or leave unassigned.").addDropdown((drop) => {
+        drop.addOption("none", "None (Unassigned)");
+        eligibleWindows.forEach((w) => drop.addOption(w.id, w.title));
+        drop.setValue(windowIdVal || "none");
+        drop.onChange((v) => {
+          windowIdVal = v;
+        });
+      });
+    }
     const buttonRow = contentEl.createDiv("fcp-modal-button-row");
     const deleteBtn = buttonRow.createEl("button", {
       cls: "mod-warning fcp-modal-delete-btn",
-      text: "Delete"
+      text: "DELETE"
     });
     deleteBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.close();
       await this.onDelete(this.entry);
     };
     const rightBtns = buttonRow.createDiv("fcp-modal-right-btns");
-    const cancelBtn = rightBtns.createEl("button", { text: "Cancel" });
-    cancelBtn.onclick = () => {
+    const cancelBtn = rightBtns.createEl("button", { text: "CANCEL" });
+    cancelBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.close();
+      if (this.isNew && !this.currentTitleVal.trim()) {
+        await this.onDelete(this.entry);
+      }
     };
     const saveBtn = rightBtns.createEl("button", {
       cls: "mod-cta",
-      text: "Save"
+      text: "SAVE"
     });
     saveBtn.onclick = async () => {
+      this.isActionTaken = true;
       this.entry.title = titleVal.trim() || "Untitled";
       this.entry.description = descVal.trim() || void 0;
       this.entry.type = typeVal;
-      this.entry.startTime = startTimeVal.trim() || this.entry.startTime;
-      this.entry.endTime = endTimeVal.trim() || this.entry.endTime;
+      const targetWin = windowIdVal && windowIdVal !== "none" ? this.windows.find((w) => w.id === windowIdVal) : void 0;
+      this.entry.windowId = targetWin && this.entry.date >= targetWin.startDate && this.entry.date <= targetWin.endDate ? targetWin.id : void 0;
       this.close();
       await this.onSave(this.entry);
     };
   }
   onClose() {
+    if (this.isNew && !this.isActionTaken && !this.currentTitleVal.trim()) {
+      this.onDelete(this.entry);
+    }
     this.contentEl.empty();
   }
 };
 var WeekViewRenderComponent = class {
   // pixels per 30 minutes (52 / 2)
-  constructor(app, containerEl, weekStart, entries, callbacks) {
+  constructor(app, containerEl, weekStart, entries, callbacks, windows = []) {
     // Constants for 30-minute precision snapping
     this.startHour = 5;
     // 05:00
@@ -250,12 +254,43 @@ var WeekViewRenderComponent = class {
     this.weekStart = weekStart;
     this.entries = entries;
     this.callbacks = callbacks;
+    this.windows = windows;
     this.render();
   }
-  update(weekStart, entries) {
+  update(weekStart, entries, windows) {
     this.weekStart = weekStart;
     this.entries = entries;
+    if (windows)
+      this.windows = windows;
     this.render();
+  }
+  deleteEntryLocal(entryId) {
+    this.entries = this.entries.filter((e) => e.id !== entryId);
+  }
+  upsertEntryLocal(entry) {
+    const idx = this.entries.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) {
+      this.entries[idx] = entry;
+    } else {
+      this.entries.push(entry);
+    }
+  }
+  openAllDayEditModal(entry) {
+    new TaskEditModal(
+      this.app,
+      entry,
+      async (updated) => {
+        this.upsertEntryLocal(updated);
+        await this.callbacks.onEntryUpdate(updated);
+        this.render();
+      },
+      async (deleted) => {
+        this.deleteEntryLocal(deleted.id);
+        await this.callbacks.onEntryDelete(deleted);
+        this.render();
+      },
+      this.windows
+    ).open();
   }
   render() {
     this.containerEl.empty();
@@ -280,6 +315,71 @@ var WeekViewRenderComponent = class {
         <div class="fcp-day-name">${dayName}</div>
         <div class="fcp-day-num">${dayNum}</div>
       `;
+    });
+    const allDayRow = this.containerEl.createDiv("fcp-week-all-day-row");
+    allDayRow.createDiv("fcp-all-day-gutter-label").textContent = "ALL-DAY";
+    const allDayGrid = allDayRow.createDiv("fcp-week-all-day-grid");
+    weekDates.forEach((date) => {
+      const dateStr = this.formatDateIso(date);
+      const cell = allDayGrid.createDiv("fcp-all-day-cell");
+      cell.dataset.date = dateStr;
+      const dayAllDay = this.entries.filter((e) => e.date === dateStr && (e.allDay || !e.startTime));
+      dayAllDay.forEach((entry) => {
+        const isCrucial = entry.type === "crucial";
+        const isFocused = this.callbacks.getFocusedTaskId() === entry.id;
+        const badge = cell.createDiv(`fcp-all-day-badge type-${entry.type} ${isFocused ? "is-focused" : ""}`);
+        badge.dataset.id = entry.id;
+        badge.title = `${entry.title}${entry.description ? "\n" + entry.description : ""}`;
+        badge.innerHTML = `
+          ${isCrucial ? '<span class="fcp-all-day-diamond">\u25C6</span>' : ""}
+          <span class="fcp-all-day-title">${this.escapeHtml(entry.title)}</span>
+        `;
+        badge.onclick = (e) => {
+          e.stopPropagation();
+          this.callbacks.onTaskFocus(entry);
+          this.openAllDayEditModal(entry);
+        };
+        badge.ondblclick = (e) => {
+          e.stopPropagation();
+          this.openAllDayEditModal(entry);
+        };
+        badge.oncontextmenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.openAllDayEditModal(entry);
+        };
+      });
+      cell.onclick = async (e) => {
+        if (e.target.closest(".fcp-all-day-badge"))
+          return;
+        const newEntry = await this.callbacks.onEntryCreate(dateStr, "", "");
+        newEntry.allDay = true;
+        this.upsertEntryLocal(newEntry);
+        const isCrucial = newEntry.type === "crucial";
+        const isFocused = this.callbacks.getFocusedTaskId() === newEntry.id;
+        const badge = cell.createDiv(`fcp-all-day-badge type-${newEntry.type} ${isFocused ? "is-focused" : ""}`);
+        badge.dataset.id = newEntry.id;
+        badge.title = "";
+        badge.innerHTML = `
+          ${isCrucial ? '<span class="fcp-all-day-diamond">\u25C6</span>' : ""}
+          <span class="fcp-all-day-title"></span>
+        `;
+        badge.onclick = (ev) => {
+          ev.stopPropagation();
+          this.callbacks.onTaskFocus(newEntry);
+          this.openAllDayEditModal(newEntry);
+        };
+        badge.ondblclick = (ev) => {
+          ev.stopPropagation();
+          this.openAllDayEditModal(newEntry);
+        };
+        badge.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.openAllDayEditModal(newEntry);
+        };
+        this.enableBadgeInlineEdit(badge, newEntry);
+      };
     });
     const gridBody = this.containerEl.createDiv("fcp-week-grid-body");
     const timeGutter = gridBody.createDiv("fcp-time-gutter");
@@ -327,17 +427,19 @@ var WeekViewRenderComponent = class {
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
         const newCard = this.renderEntryCard(colEl, newEntry);
         this.layoutDayColumn(dateStr);
-        this.openEditModal(newEntry, newCard);
+        this.enableCardInlineEdit(newCard, newEntry);
       });
-      const dayEntries = this.entries.filter((e) => e.date === dateStr);
-      dayEntries.forEach((entry) => {
+      const timedDayEntries = this.entries.filter((e) => e.date === dateStr && !e.allDay && Boolean(e.startTime));
+      timedDayEntries.forEach((entry) => {
         this.renderEntryCard(colEl, entry);
       });
       this.layoutDayColumn(dateStr);
     });
     const syncHeaderScrollbar = () => {
       const scrollbarWidth = gridBody.offsetWidth - gridBody.clientWidth;
-      headerRow.style.paddingRight = scrollbarWidth > 0 ? `${scrollbarWidth}px` : "0px";
+      const pad = scrollbarWidth > 0 ? `${scrollbarWidth}px` : "0px";
+      headerRow.style.paddingRight = pad;
+      allDayRow.style.paddingRight = pad;
     };
     setTimeout(syncHeaderScrollbar, 0);
     if (typeof ResizeObserver !== "undefined") {
@@ -350,11 +452,12 @@ var WeekViewRenderComponent = class {
    */
   calculateDayOverlapLayout(entries) {
     const layoutMap = /* @__PURE__ */ new Map();
-    if (entries.length === 0)
+    const timed = entries.filter((e) => !e.allDay && Boolean(e.startTime));
+    if (timed.length === 0)
       return layoutMap;
-    const intervals = entries.map((e) => {
-      const startMins = this.snapTo30Min(this.timeStrToMinutes(e.startTime));
-      let endMins = this.snapTo30Min(this.timeStrToMinutes(e.endTime));
+    const intervals = timed.map((e) => {
+      const startMins = this.snapTo30Min(this.timeStrToMinutes(e.startTime || "09:00"));
+      let endMins = this.snapTo30Min(this.timeStrToMinutes(e.endTime || "10:00"));
       if (endMins <= startMins)
         endMins = startMins + 30;
       return { entry: e, startMins, endMins };
@@ -412,7 +515,7 @@ var WeekViewRenderComponent = class {
     const colEl = this.containerEl.querySelector(`.fcp-day-column[data-date="${dateStr}"]`);
     if (!colEl)
       return;
-    const dayEntries = this.entries.filter((e) => e.date === dateStr);
+    const dayEntries = this.entries.filter((e) => e.date === dateStr && !e.allDay && Boolean(e.startTime));
     const layoutMap = this.calculateDayOverlapLayout(dayEntries);
     const cards = colEl.querySelectorAll(".fcp-entry-card");
     cards.forEach((card) => {
@@ -444,7 +547,11 @@ var WeekViewRenderComponent = class {
       content.empty();
     }
     const titleEl = content.createDiv("fcp-entry-title");
-    titleEl.textContent = entry.title || "Untitled";
+    if (entry.type === "crucial") {
+      titleEl.innerHTML = `<span class="fcp-crucial-icon">\u25C6</span> ${this.escapeHtml(entry.title || "Untitled")}`;
+    } else {
+      titleEl.textContent = entry.title || "Untitled";
+    }
     if (entry.description && entry.description.trim()) {
       const descEl = content.createDiv("fcp-entry-desc");
       descEl.textContent = entry.description.trim();
@@ -504,21 +611,24 @@ var WeekViewRenderComponent = class {
         });
       });
       menu.addItem((item) => {
-        const nextType = entry.type === "task" ? "Event (Green)" : "Task (Pastel Blue)";
-        item.setTitle(`Change to ${nextType}`).setIcon("lucide-refresh-cw").onClick(async () => {
-          entry.type = entry.type === "task" ? "event" : "task";
+        const types = [
+          { key: "task", label: "Task (Pastel Blue)" },
+          { key: "event", label: "Event (Green)" },
+          { key: "crucial", label: "Crucial (Yellow)" }
+        ];
+        const nextIdx = (types.findIndex((t) => t.key === entry.type) + 1) % types.length;
+        const next = types[nextIdx];
+        item.setTitle(`Change to ${next.label}`).setIcon("lucide-refresh-cw").onClick(async () => {
+          entry.type = next.key;
           card.className = `fcp-entry-card type-${entry.type} ${this.callbacks.getFocusedTaskId() === entry.id ? "is-focused" : ""} ${parseFloat(card.style.height) <= this.slotHeight ? "is-short" : ""}`;
+          this.renderCardContent(card, entry);
           await this.callbacks.onEntryUpdate(entry);
-        });
-      });
-      menu.addItem((item) => {
-        item.setTitle("Focus Pomodoro Timer").setIcon("lucide-timer").onClick(() => {
-          this.callbacks.onTaskFocus(entry);
         });
       });
       menu.addSeparator();
       menu.addItem((item) => {
         item.setTitle("Delete Entry").setIcon("lucide-trash-2").onClick(async () => {
+          this.deleteEntryLocal(entry.id);
           card.remove();
           await this.callbacks.onEntryDelete(entry);
           this.layoutDayColumn(entry.date);
@@ -534,6 +644,7 @@ var WeekViewRenderComponent = class {
       this.app,
       entry,
       async (updatedEntry) => {
+        this.upsertEntryLocal(updatedEntry);
         this.renderCardContent(card, updatedEntry);
         card.className = `fcp-entry-card type-${updatedEntry.type} ${this.callbacks.getFocusedTaskId() === updatedEntry.id ? "is-focused" : ""} ${parseFloat(card.style.height) <= this.slotHeight ? "is-short" : ""}`;
         const startMins = this.snapTo30Min(this.timeStrToMinutes(updatedEntry.startTime));
@@ -550,10 +661,12 @@ var WeekViewRenderComponent = class {
         this.layoutDayColumn(updatedEntry.date);
       },
       async (deletedEntry) => {
+        this.deleteEntryLocal(deletedEntry.id);
         card.remove();
         await this.callbacks.onEntryDelete(deletedEntry);
         this.layoutDayColumn(deletedEntry.date);
-      }
+      },
+      this.windows
     ).open();
   }
   enableCardInlineEdit(card, entry) {
@@ -579,9 +692,26 @@ var WeekViewRenderComponent = class {
         return;
       isFinished = true;
       card.removeClass("is-editing");
-      if (!cancelled) {
-        const newTitle = input.value.trim() || "New Task";
+      if (cancelled) {
+        if (!entry.title) {
+          this.deleteEntryLocal(entry.id);
+          card.remove();
+          await this.callbacks.onEntryDelete(entry);
+          this.layoutDayColumn(entry.date);
+          return;
+        }
+      } else {
+        const val = input.value.trim();
+        if (!val && !entry.title) {
+          this.deleteEntryLocal(entry.id);
+          card.remove();
+          await this.callbacks.onEntryDelete(entry);
+          this.layoutDayColumn(entry.date);
+          return;
+        }
+        const newTitle = val || entry.title || "New Task";
         entry.title = newTitle;
+        this.upsertEntryLocal(entry);
         await this.callbacks.onEntryUpdate(entry);
       }
       this.renderCardContent(card, entry);
@@ -608,6 +738,69 @@ var WeekViewRenderComponent = class {
     input.addEventListener("click", (e) => e.stopPropagation());
     input.addEventListener("dblclick", (e) => e.stopPropagation());
   }
+  enableBadgeInlineEdit(badge, entry) {
+    const titleEl = badge.querySelector(".fcp-all-day-title");
+    if (!titleEl || badge.classList.contains("is-editing"))
+      return;
+    badge.addClass("is-editing");
+    titleEl.innerHTML = "";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "fcp-inline-input";
+    input.value = entry.title || "";
+    titleEl.appendChild(input);
+    let isReady = false;
+    setTimeout(() => {
+      isReady = true;
+      input.focus();
+      input.select();
+    }, 100);
+    let isFinished = false;
+    const finishEdit = async (cancelled) => {
+      if (isFinished)
+        return;
+      isFinished = true;
+      badge.removeClass("is-editing");
+      if (cancelled) {
+        if (!entry.title) {
+          this.deleteEntryLocal(entry.id);
+          badge.remove();
+          await this.callbacks.onEntryDelete(entry);
+          return;
+        }
+      } else {
+        const val = input.value.trim();
+        if (!val && !entry.title) {
+          this.deleteEntryLocal(entry.id);
+          badge.remove();
+          await this.callbacks.onEntryDelete(entry);
+          return;
+        }
+        entry.title = val || entry.title || "New Task";
+        this.upsertEntryLocal(entry);
+        await this.callbacks.onEntryUpdate(entry);
+      }
+      titleEl.textContent = entry.title;
+      badge.title = `${entry.title}${entry.description ? "\n" + entry.description : ""}`;
+    };
+    input.addEventListener("blur", () => {
+      if (!isReady)
+        return;
+      finishEdit(false);
+    });
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finishEdit(false);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        finishEdit(true);
+      }
+    });
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("dblclick", (e) => e.stopPropagation());
+  }
   setupCardDrag(card, entry) {
     let isDragging = false;
     let hasMoved = false;
@@ -615,6 +808,8 @@ var WeekViewRenderComponent = class {
     let startY = 0;
     let startTop = 0;
     let startHeight = 0;
+    let isOverAllDay = false;
+    let targetAllDayCell = null;
     const maxGridHeight = this.totalHours * this.hourHeight;
     const onMouseDown = (e) => {
       if (e.button !== 0 || card.classList.contains("is-editing"))
@@ -629,6 +824,8 @@ var WeekViewRenderComponent = class {
       }
       isDragging = true;
       hasMoved = false;
+      isOverAllDay = false;
+      targetAllDayCell = null;
       startY = e.clientY;
       startTop = parseFloat(card.style.top) || 0;
       startHeight = parseFloat(card.style.height) || this.slotHeight;
@@ -644,6 +841,30 @@ var WeekViewRenderComponent = class {
         card.addClass("is-dragging");
       }
       const columnsContainer = this.containerEl.querySelector(".fcp-columns-container");
+      const allDayRow = this.containerEl.querySelector(".fcp-week-all-day-row");
+      isOverAllDay = false;
+      targetAllDayCell = null;
+      if (dragMode === "move" && allDayRow) {
+        const allDayRect = allDayRow.getBoundingClientRect();
+        if (e.clientY <= allDayRect.bottom + 8) {
+          isOverAllDay = true;
+          const cells = Array.from(allDayRow.querySelectorAll(".fcp-all-day-cell"));
+          for (const c of cells) {
+            const cr = c.getBoundingClientRect();
+            if (e.clientX >= cr.left && e.clientX <= cr.right) {
+              targetAllDayCell = c;
+              break;
+            }
+          }
+        }
+      }
+      const allDayCells = this.containerEl.querySelectorAll(".fcp-all-day-cell");
+      allDayCells.forEach((c) => {
+        if (c === targetAllDayCell)
+          c.addClass("is-drag-over");
+        else
+          c.removeClass("is-drag-over");
+      });
       if (dragMode === "move") {
         const rawTop = startTop + deltaY;
         const snappedTop = Math.max(0, Math.min(Math.round(rawTop / this.slotHeight) * this.slotHeight, maxGridHeight - startHeight));
@@ -678,11 +899,18 @@ var WeekViewRenderComponent = class {
         } else {
           card.removeClass("is-short");
         }
-        const startMins = this.startHour * 60 + Math.round(currentTop / this.slotHeight) * 30;
-        const endMins = startMins + Math.round(currentHeight / this.slotHeight) * 30;
         const timeDiv = card.querySelector(".fcp-entry-time");
-        if (timeDiv) {
-          timeDiv.textContent = `${this.minutesToTimeStr(startMins)} - ${this.minutesToTimeStr(endMins)}`;
+        if (isOverAllDay) {
+          card.addClass("is-dropping-all-day");
+          if (timeDiv)
+            timeDiv.textContent = "Drop for all-day";
+        } else {
+          card.removeClass("is-dropping-all-day");
+          const startMins = this.startHour * 60 + Math.round(currentTop / this.slotHeight) * 30;
+          const endMins = startMins + Math.round(currentHeight / this.slotHeight) * 30;
+          if (timeDiv) {
+            timeDiv.textContent = `${this.minutesToTimeStr(startMins)} - ${this.minutesToTimeStr(endMins)}`;
+          }
         }
       }
     };
@@ -691,11 +919,23 @@ var WeekViewRenderComponent = class {
         return;
       isDragging = false;
       card.removeClass("is-dragging");
+      card.removeClass("is-dropping-all-day");
+      const allDayCells = this.containerEl.querySelectorAll(".fcp-all-day-cell");
+      allDayCells.forEach((c) => c.removeClass("is-drag-over"));
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       if (!hasMoved)
         return;
       const oldDate = entry.date;
+      if (isOverAllDay && targetAllDayCell && targetAllDayCell.dataset.date) {
+        entry.date = targetAllDayCell.dataset.date;
+        entry.allDay = true;
+        entry.startTime = "";
+        entry.endTime = "";
+        await this.callbacks.onEntryUpdate(entry, oldDate);
+        this.render();
+        return;
+      }
       const finalTop = parseFloat(card.style.top) || 0;
       const finalHeight = parseFloat(card.style.height) || this.slotHeight;
       const startSlot = Math.round(finalTop / this.slotHeight);
@@ -706,6 +946,7 @@ var WeekViewRenderComponent = class {
       if (targetColEl && targetColEl.dataset.date) {
         entry.date = targetColEl.dataset.date;
       }
+      entry.allDay = false;
       entry.startTime = this.minutesToTimeStr(startMins);
       entry.endTime = this.minutesToTimeStr(endMins);
       await this.callbacks.onEntryUpdate(entry, oldDate);
@@ -739,7 +980,7 @@ var WeekViewRenderComponent = class {
   updateFocusedTask(focusedTaskId) {
     if (!this.containerEl)
       return;
-    const cards = this.containerEl.querySelectorAll(".fcp-entry-card");
+    const cards = this.containerEl.querySelectorAll(".fcp-entry-card, .fcp-all-day-badge");
     cards.forEach((cardEl) => {
       const htmlEl = cardEl;
       if (htmlEl.dataset.id === focusedTaskId) {
@@ -840,16 +1081,24 @@ var MonthViewRenderComponent = class {
           return;
         this.callbacks.onDayClick(cellIso);
       });
-      const dayEvents = this.entries.filter((e) => e.date === cellIso && e.type === "event");
+      const dayEvents = this.entries.filter((e) => e.date === cellIso && (e.type === "event" || e.type === "crucial"));
       if (dayEvents.length > 0) {
+        dayEvents.sort((a, b) => {
+          if (a.type === "crucial" && b.type !== "crucial")
+            return -1;
+          if (a.type !== "crucial" && b.type === "crucial")
+            return 1;
+          return (a.startTime || "").localeCompare(b.startTime || "");
+        });
         const eventsContainer = cellEl.createDiv("fcp-month-events-container");
         dayEvents.forEach((evt) => {
+          const isCrucial = evt.type === "crucial";
           const evtEl = eventsContainer.createDiv(`fcp-month-event-item type-${evt.type || "event"}`);
-          const timeSuffix = evt.startTime ? ` (${evt.startTime} - ${evt.endTime})` : "";
-          evtEl.title = `${evt.title || "Event"}${timeSuffix}`;
+          const timeSuffix = evt.startTime && evt.endTime ? ` (${evt.startTime} - ${evt.endTime})` : "";
+          evtEl.title = `${evt.title || "Untitled"}${timeSuffix}`;
           evtEl.innerHTML = `
-            <span class="fcp-evt-dot"></span>
-            <span class="fcp-evt-title">${this.escapeHtml(evt.title || "Event")}</span>
+            ${isCrucial ? '<span class="fcp-evt-diamond">\u25C6</span>' : '<span class="fcp-evt-dot"></span>'}
+            <span class="fcp-evt-title">${this.escapeHtml(evt.title || "Untitled")}</span>
           `;
           evtEl.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -874,6 +1123,7 @@ var MonthViewRenderComponent = class {
     }, 0);
   }
   renderBreakdownPanel(parentEl) {
+    const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
     const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, "0")}`;
     const activityMap = /* @__PURE__ */ new Map();
     let grandTotalSeconds = 0;
@@ -913,10 +1163,9 @@ var MonthViewRenderComponent = class {
       totalHours: act.totalSeconds / 3600,
       color: act.color
     })).sort((a, b) => b.totalHours - a.totalHours);
-    const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
     const header = breakdownPanel.createDiv("fcp-breakdown-header");
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Statistics</div>
+      <div class="fcp-breakdown-title">STATISTICS</div>
       <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
     `;
     if (activities.length === 0 || grandTotalSeconds === 0) {
@@ -955,9 +1204,480 @@ var MonthViewRenderComponent = class {
   }
 };
 
+// src/views/timeline/TimelineUtils.ts
+function calculateTotalDays(startDate, monthsSpan) {
+  let days = 0;
+  const current = new Date(startDate);
+  for (let m = 0; m < monthsSpan; m++) {
+    days += new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+    current.setMonth(current.getMonth() + 1);
+  }
+  return days;
+}
+function calculateEndDate(startDate, monthsSpan) {
+  const end = new Date(startDate);
+  end.setMonth(end.getMonth() + monthsSpan);
+  end.setDate(0);
+  return end;
+}
+function diffDays(dateStr, startDate) {
+  const d = /* @__PURE__ */ new Date(dateStr + "T00:00:00");
+  const s = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  return Math.round((d.getTime() - s.getTime()) / (1e3 * 60 * 60 * 24));
+}
+function dateToPercent(dateStr, startDate, totalDays) {
+  return Math.max(0, Math.min(100, diffDays(dateStr, startDate) / totalDays * 100));
+}
+function eventToPercent(dateStr, startDate, totalDays) {
+  return Math.max(0, Math.min(100, (diffDays(dateStr, startDate) + 0.5) / totalDays * 100));
+}
+function windowRangeToPercent(start, end, startDate, totalDays) {
+  const left = Math.max(0, Math.min(100, diffDays(start, startDate) / totalDays * 100));
+  const right = Math.max(0, Math.min(100, (diffDays(end, startDate) + 1) / totalDays * 100));
+  return { leftPct: left, widthPct: Math.max(1, right - left) };
+}
+function formatDateIso(d) {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, "0");
+  const day = d.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// src/views/timeline/TimelineRuler.ts
+var TimelineRuler = class {
+  static render(canvas, startDate, monthsSpan, totalDays, rangeEndDate, dayWidthPx = 14) {
+    const showDays = dayWidthPx >= 18;
+    this.renderHeader(canvas, startDate, monthsSpan, totalDays, showDays);
+    this.renderGrid(canvas, startDate, monthsSpan, totalDays, showDays);
+    this.renderTodayMarker(canvas, startDate, rangeEndDate, totalDays);
+  }
+  static renderHeader(canvas, startDate, monthsSpan, totalDays, showDays) {
+    const headerEl = canvas.createDiv("fcp-timeline-header-ruler");
+    const monthsRow = headerEl.createDiv("fcp-timeline-months-row");
+    const cur = new Date(startDate);
+    for (let m = 0; m < monthsSpan; m++) {
+      const days = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+      const col = monthsRow.createDiv("fcp-timeline-month-col");
+      col.style.width = `${days / totalDays * 100}%`;
+      const name = cur.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+      col.innerHTML = `<span class="fcp-ruler-month-label">${name}</span><span class="fcp-ruler-month-days">${days}d</span>`;
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    if (showDays) {
+      const daysRow = headerEl.createDiv("fcp-timeline-days-row");
+      const dCur = new Date(startDate);
+      for (let m = 0; m < monthsSpan; m++) {
+        const days = new Date(dCur.getFullYear(), dCur.getMonth() + 1, 0).getDate();
+        for (let d = 1; d <= days; d++) {
+          const cell = daysRow.createDiv("fcp-ruler-day-col");
+          cell.style.width = `${1 / totalDays * 100}%`;
+          cell.textContent = d.toString();
+        }
+        dCur.setMonth(dCur.getMonth() + 1);
+      }
+    }
+  }
+  static renderGrid(canvas, startDate, monthsSpan, totalDays, showDays) {
+    const overlay = canvas.createDiv("fcp-timeline-grid-overlay");
+    const cur = new Date(startDate);
+    const monthEnds = /* @__PURE__ */ new Set();
+    let acc = 0;
+    for (let m = 0; m < monthsSpan; m++) {
+      acc += new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+      monthEnds.add(acc);
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    if (!showDays) {
+      monthEnds.forEach((d) => {
+        overlay.createDiv("fcp-timeline-grid-line").style.left = `${d / totalDays * 100}%`;
+      });
+      return;
+    }
+    for (let d = 1; d <= totalDays; d++) {
+      const cls = monthEnds.has(d) ? "fcp-timeline-grid-line is-month" : "fcp-timeline-grid-line is-day";
+      overlay.createDiv(cls).style.left = `${d / totalDays * 100}%`;
+    }
+  }
+  static renderTodayMarker(canvas, startDate, rangeEndDate, totalDays) {
+    const todayIso = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    if (todayIso >= formatDateIso(startDate) && todayIso <= formatDateIso(rangeEndDate)) {
+      const marker = canvas.createDiv("fcp-timeline-today-marker");
+      marker.style.left = `${dateToPercent(todayIso, startDate, totalDays)}%`;
+      marker.createDiv("fcp-timeline-today-badge").textContent = "TODAY";
+    }
+  }
+};
+
+// src/views/timeline/TimelineLanePacker.ts
+var TimelineLanePacker = class {
+  static pack(windows) {
+    const lanes = [];
+    const sorted = [...windows].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    sorted.forEach((w) => {
+      let placed = false;
+      for (const lane of lanes) {
+        if (lane[lane.length - 1].endDate < w.startDate) {
+          lane.push(w);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed)
+        lanes.push([w]);
+    });
+    return lanes;
+  }
+  static mapEventsToWindows(entries, windows) {
+    const map = /* @__PURE__ */ new Map();
+    entries.forEach((e) => {
+      if (e.type !== "crucial")
+        return;
+      if (e.windowId && e.windowId !== "none" && windows.some((w) => w.id === e.windowId)) {
+        const list = map.get(e.windowId) || [];
+        list.push(e);
+        map.set(e.windowId, list);
+      }
+    });
+    return map;
+  }
+};
+
+// src/views/timeline/TimelineMarkerDrag.ts
+var TimelineMarkerDrag = class {
+  static setup(el, e, windows, canvas, onUpdate, onClick) {
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    const onMouseDown = (ev) => {
+      if (ev.button !== 0)
+        return;
+      ev.stopPropagation();
+      startX = ev.clientX;
+      startY = ev.clientY;
+      isDragging = false;
+      const onMouseMove = (moveEv) => {
+        const dist = Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY);
+        if (!isDragging && dist > 5) {
+          isDragging = true;
+          el.addClass("is-dragging");
+        }
+        if (isDragging) {
+          const hovered = document.elementFromPoint(moveEv.clientX, moveEv.clientY);
+          const frame = hovered == null ? void 0 : hovered.closest(".fcp-timeline-window-frame");
+          canvas.querySelectorAll(".fcp-timeline-window-frame").forEach((f) => {
+            if (f === frame) {
+              const winId = f.getAttribute("data-window-id");
+              const win = windows.find((w) => w.id === winId);
+              if (win && e.date >= win.startDate && e.date <= win.endDate) {
+                f.addClass("is-drop-target");
+              }
+            } else {
+              f.removeClass("is-drop-target");
+            }
+          });
+        }
+      };
+      const onMouseUp = async (upEv) => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        canvas.querySelectorAll(".fcp-timeline-window-frame").forEach((f) => f.removeClass("is-drop-target"));
+        if (!isDragging) {
+          onClick(e);
+          return;
+        }
+        el.removeClass("is-dragging");
+        const targetEl = document.elementFromPoint(upEv.clientX, upEv.clientY);
+        const targetFrame = targetEl == null ? void 0 : targetEl.closest(".fcp-timeline-window-frame");
+        const targetUnassigned = targetEl == null ? void 0 : targetEl.closest(".fcp-unassigned-lane");
+        if (targetFrame && targetFrame.dataset.windowId) {
+          const win = windows.find((w) => w.id === targetFrame.dataset.windowId);
+          if (win && e.date >= win.startDate && e.date <= win.endDate) {
+            e.windowId = win.id;
+            await onUpdate(e);
+          }
+          return;
+        }
+        if (targetUnassigned) {
+          e.windowId = "none";
+          await onUpdate(e);
+        }
+      };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    };
+    el.addEventListener("mousedown", onMouseDown);
+  }
+};
+
+// src/views/timeline/TimelineFramesTrack.ts
+var TimelineFramesTrack = class {
+  static render(canvas, windows, entries, startDate, rangeEndDate, totalDays, dayWidthPx, cb) {
+    const container = canvas.createDiv("fcp-timeline-frames-container");
+    const startIso = formatDateIso(startDate), endIso = formatDateIso(rangeEndDate);
+    const visWins = windows.filter((w) => w.startDate <= endIso && w.endDate >= startIso);
+    const crucial = entries.filter((e) => e.type === "crucial" && e.date >= startIso && e.date <= endIso);
+    if (visWins.length === 0 && crucial.length === 0) {
+      container.createDiv("fcp-timeline-empty-notice").textContent = "No time windows or crucial events.";
+      return;
+    }
+    const assigned = TimelineLanePacker.mapEventsToWindows(crucial, visWins);
+    const lanes = TimelineLanePacker.pack(visWins);
+    lanes.forEach((lane) => {
+      const laneEl = container.createDiv("fcp-timeline-frame-lane");
+      lane.forEach((w) => {
+        this.renderFrame(laneEl, w, startDate, totalDays, cb);
+        (assigned.get(w.id) || []).forEach((e) => {
+          this.renderMarker(laneEl, e, eventToPercent(e.date, startDate, totalDays), windows, canvas, cb);
+        });
+      });
+    });
+    const unassigned = crucial.filter((e) => !e.windowId || e.windowId === "none" || !windows.some((w) => w.id === e.windowId));
+    if (unassigned.length > 0) {
+      const lane = container.createDiv("fcp-timeline-frame-lane fcp-unassigned-lane");
+      lane.createDiv("fcp-frame-baseline");
+      unassigned.forEach((e) => {
+        this.renderMarker(lane, e, eventToPercent(e.date, startDate, totalDays), windows, canvas, cb);
+      });
+    }
+  }
+  static renderFrame(laneEl, w, startDate, totalDays, cb) {
+    const { leftPct, widthPct } = windowRangeToPercent(w.startDate, w.endDate, startDate, totalDays);
+    const frame = laneEl.createDiv(`fcp-timeline-window-frame color-${w.color || "indigo"}`);
+    frame.dataset.windowId = w.id;
+    frame.style.left = `${leftPct}%`;
+    frame.style.width = `${widthPct}%`;
+    const header = frame.createDiv("fcp-frame-header");
+    header.innerHTML = `<span class="fcp-frame-title">${escapeHtml(w.title)}</span>`;
+    header.title = `${w.title}
+${w.startDate} to ${w.endDate}
+(Click to edit window)`;
+    header.onclick = (e) => {
+      e.stopPropagation();
+      cb.onWindowClick(w);
+    };
+    frame.createDiv("fcp-frame-baseline");
+  }
+  static renderMarker(parent, e, left, windows, canvas, cb) {
+    const el = parent.createDiv("fcp-timeline-rhombus");
+    el.style.left = `${left}%`;
+    el.title = `${e.title}
+${e.date}${e.startTime ? " " + e.startTime : ""}`;
+    TimelineMarkerDrag.setup(el, e, windows, canvas, cb.onEntryUpdate, cb.onEntryClick);
+  }
+};
+
+// src/views/timeline/TimelineControls.ts
+var TimelineControls = class {
+  static render(parentEl, onAddWindow) {
+    const controlsBar = parentEl.createDiv("fcp-timeline-controls");
+    const addWindowBtn = controlsBar.createEl("button", {
+      cls: "fcp-btn fcp-btn-primary",
+      text: "+ ADD TIME WINDOW"
+    });
+    addWindowBtn.onclick = () => onAddWindow();
+    return controlsBar;
+  }
+  static attachWheelZoom(scrollContainer, getDayWidth, getCanvasWidth, onZoomChange) {
+    scrollContainer.addEventListener("wheel", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentWidth = getDayWidth();
+        const factor = e.deltaY < 0 ? 1.15 : 0.87;
+        const newWidth = Math.max(4, Math.min(60, currentWidth * factor));
+        if (Math.abs(newWidth - currentWidth) > 0.05) {
+          const rect = scrollContainer.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const contentX = scrollContainer.scrollLeft + mouseX;
+          const ratio = contentX / getCanvasWidth();
+          onZoomChange(newWidth, ratio, mouseX);
+        }
+      }
+    }, { passive: false });
+  }
+};
+
+// src/views/TimelineViewRender.ts
+var TimelineViewRenderComponent = class {
+  constructor(app, containerEl, startDate, windows, entries, callbacks) {
+    this.app = app;
+    this.containerEl = containerEl;
+    this.windows = windows;
+    this.entries = entries;
+    this.callbacks = callbacks;
+    this.monthsSpan = 9;
+    this.dayWidthPx = 16;
+    this.canvasWidthPx = 1400;
+    this.startDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
+    if (callbacks.initialDayWidthPx)
+      this.dayWidthPx = callbacks.initialDayWidthPx;
+    this.buildBase();
+    this.renderContent();
+    this.initScroll(callbacks.initialScrollLeft);
+  }
+  updateData(windows, entries) {
+    this.windows = windows;
+    this.entries = entries;
+    this.renderContent();
+  }
+  buildBase() {
+    this.containerEl.empty();
+    this.containerEl.addClass("fcp-timeline-view-wrapper");
+    TimelineControls.render(this.containerEl, () => this.callbacks.onWindowCreate());
+    this.scrollContainer = this.containerEl.createDiv("fcp-timeline-scroll-container");
+    this.canvas = this.scrollContainer.createDiv("fcp-timeline-canvas");
+    this.scrollContainer.addEventListener("scroll", () => {
+      var _a, _b;
+      (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, this.scrollContainer.scrollLeft);
+    });
+    TimelineControls.attachWheelZoom(
+      this.scrollContainer,
+      () => this.dayWidthPx,
+      () => this.canvasWidthPx,
+      (newWidth, ratio, mouseX) => {
+        var _a, _b;
+        this.dayWidthPx = newWidth;
+        this.renderContent();
+        this.scrollContainer.scrollLeft = ratio * this.canvasWidthPx - mouseX;
+        (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, this.scrollContainer.scrollLeft);
+      }
+    );
+  }
+  renderContent() {
+    var _a, _b;
+    const savedScroll = (_b = (_a = this.scrollContainer) == null ? void 0 : _a.scrollLeft) != null ? _b : 0;
+    const totalDays = calculateTotalDays(this.startDate, this.monthsSpan);
+    const rangeEndDate = calculateEndDate(this.startDate, this.monthsSpan);
+    this.canvasWidthPx = Math.max(1e3, Math.round(totalDays * this.dayWidthPx));
+    this.canvas.style.minWidth = `${this.canvasWidthPx}px`;
+    this.canvas.empty();
+    TimelineRuler.render(this.canvas, this.startDate, this.monthsSpan, totalDays, rangeEndDate, this.dayWidthPx);
+    TimelineFramesTrack.render(this.canvas, this.windows, this.entries, this.startDate, rangeEndDate, totalDays, this.dayWidthPx, {
+      onWindowClick: this.callbacks.onWindowClick,
+      onEntryClick: this.callbacks.onEntryClick,
+      onEntryUpdate: (entry) => this.callbacks.onEntryUpdate(entry)
+    });
+    if (savedScroll > 0)
+      this.scrollContainer.scrollLeft = savedScroll;
+  }
+  initScroll(initialScroll) {
+    if (initialScroll !== void 0 && initialScroll >= 0) {
+      this.scrollContainer.scrollLeft = initialScroll;
+      return;
+    }
+    const totalDays = calculateTotalDays(this.startDate, this.monthsSpan);
+    const todayDiff = diffDays(formatDateIso(/* @__PURE__ */ new Date()), this.startDate);
+    const todayPx = todayDiff / totalDays * this.canvasWidthPx;
+    this.scrollContainer.scrollLeft = Math.max(0, todayPx - this.scrollContainer.clientWidth / 2);
+  }
+};
+
+// src/views/TimeWindowModal.ts
+var import_obsidian2 = require("obsidian");
+var TimeWindowModal = class extends import_obsidian2.Modal {
+  constructor(app, windowData, onSave, onDelete) {
+    super(app);
+    this.isNew = !windowData || !windowData.id;
+    this.windowData = windowData ? { ...windowData } : {};
+    this.onSave = onSave;
+    this.onDelete = onDelete;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("fcp-window-modal");
+    contentEl.createEl("h2", { text: this.isNew ? "NEW TIME WINDOW" : "EDIT TIME WINDOW" });
+    let titleVal = this.windowData.title || "";
+    let startDateVal = this.windowData.startDate || (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    let endDateVal = this.windowData.endDate || new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString().substring(0, 10);
+    let colorVal = this.windowData.color || "indigo";
+    let descVal = this.windowData.description || "";
+    new import_obsidian2.Setting(contentEl).setName("Title").setDesc('e.g. "Third Year Lessons", "First Exam Session"').addText((text) => text.setPlaceholder("Window title...").setValue(titleVal).onChange((v) => {
+      titleVal = v;
+    }));
+    new import_obsidian2.Setting(contentEl).setName("Start Date").setDesc("Beginning of this time period (YYYY-MM-DD)").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(startDateVal);
+      text.onChange((v) => {
+        startDateVal = v;
+      });
+    });
+    new import_obsidian2.Setting(contentEl).setName("End Date").setDesc("End of this time period (YYYY-MM-DD)").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(endDateVal);
+      text.onChange((v) => {
+        endDateVal = v;
+      });
+    });
+    new import_obsidian2.Setting(contentEl).setName("Color Accent").setDesc("Visual color theme for this window banner.").addDropdown((drop) => drop.addOption("indigo", "Indigo").addOption("emerald", "Emerald").addOption("amber", "Amber / Gold").addOption("rose", "Rose").addOption("cyan", "Cyan").addOption("purple", "Purple").setValue(colorVal).onChange((v) => {
+      colorVal = v;
+    }));
+    new import_obsidian2.Setting(contentEl).setName("Description / Notes").setDesc("Optional notes or syllabus details.").addTextArea((text) => {
+      text.setPlaceholder("Enter details...").setValue(descVal).onChange((v) => {
+        descVal = v;
+      });
+      text.inputEl.rows = 3;
+      text.inputEl.style.width = "100%";
+      text.inputEl.style.resize = "vertical";
+    });
+    const buttonRow = contentEl.createDiv("fcp-modal-button-row");
+    if (!this.isNew && this.onDelete && this.windowData.id) {
+      const deleteBtn = buttonRow.createEl("button", {
+        cls: "mod-warning fcp-modal-delete-btn",
+        text: "DELETE WINDOW"
+      });
+      deleteBtn.onclick = async () => {
+        const id = this.windowData.id;
+        this.close();
+        await this.onDelete(id);
+      };
+    } else {
+      buttonRow.createDiv();
+    }
+    const rightBtns = buttonRow.createDiv("fcp-modal-right-btns");
+    const cancelBtn = rightBtns.createEl("button", { text: "CANCEL" });
+    cancelBtn.onclick = () => {
+      this.close();
+    };
+    const saveBtn = rightBtns.createEl("button", {
+      cls: "mod-cta",
+      text: "SAVE WINDOW"
+    });
+    saveBtn.onclick = async () => {
+      if (!titleVal.trim()) {
+        titleVal = "Untitled Window";
+      }
+      if (startDateVal > endDateVal) {
+        const temp = startDateVal;
+        startDateVal = endDateVal;
+        endDateVal = temp;
+      }
+      const updatedWindow = {
+        id: this.windowData.id || `window-${Date.now()}`,
+        title: titleVal.trim(),
+        startDate: startDateVal,
+        endDate: endDateVal,
+        color: colorVal,
+        description: descVal.trim() || void 0,
+        createdAt: this.windowData.createdAt || Date.now(),
+        updatedAt: Date.now()
+      };
+      this.close();
+      await this.onSave(updatedWindow);
+    };
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // src/views/CalendarView.ts
 var VIEW_TYPE_FOCUS_CALENDAR = "focus-calendar-pomodoro-view";
-var FocusCalendarView = class extends import_obsidian2.ItemView {
+var FocusCalendarView = class extends import_obsidian3.ItemView {
   constructor(leaf, storage, pomodoro) {
     super(leaf);
     this.viewMode = "week";
@@ -965,8 +1685,12 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     this.headerComponent = null;
     this.weekComponent = null;
     this.monthComponent = null;
+    this.timelineComponent = null;
+    this.timelineZoomPx = 16;
+    this.timelineScrollLeft = -1;
     this.entries = [];
     this.pomoLogs = [];
+    this.windows = [];
     this.storage = storage;
     this.pomodoro = pomodoro;
   }
@@ -987,13 +1711,21 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     const targetDate = this.currentDate;
     const year = targetDate.getFullYear();
     const month = targetDate.getMonth();
-    const prevMonthDate = new Date(year, month - 1, 1);
-    const nextMonthDate = new Date(year, month + 1, 1);
-    const monthsToLoad = [
-      this.getYearMonthString(prevMonthDate),
-      this.getYearMonthString(targetDate),
-      this.getYearMonthString(nextMonthDate)
-    ];
+    this.windows = await this.storage.loadTimeWindows();
+    const monthsToLoad = /* @__PURE__ */ new Set();
+    if (this.viewMode === "timeline") {
+      const start = new Date(year, month - 1, 1);
+      for (let i = 0; i < 9; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+        monthsToLoad.add(this.getYearMonthString(d));
+      }
+    } else {
+      const prevMonthDate = new Date(year, month - 1, 1);
+      const nextMonthDate = new Date(year, month + 1, 1);
+      monthsToLoad.add(this.getYearMonthString(prevMonthDate));
+      monthsToLoad.add(this.getYearMonthString(targetDate));
+      monthsToLoad.add(this.getYearMonthString(nextMonthDate));
+    }
     const entryMap = /* @__PURE__ */ new Map();
     const logMap = /* @__PURE__ */ new Map();
     for (const ym of monthsToLoad) {
@@ -1009,9 +1741,11 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("fcp-main-container");
+    container.style.padding = "0";
+    container.style.margin = "0";
     const navBar = container.createDiv("fcp-nav-bar");
     const leftNav = navBar.createDiv("fcp-nav-left");
-    const todayBtn = leftNav.createEl("button", { cls: "fcp-btn", text: "Today" });
+    const todayBtn = leftNav.createEl("button", { cls: "fcp-btn", text: "TODAY" });
     todayBtn.onclick = async () => {
       this.currentDate = /* @__PURE__ */ new Date();
       await this.refreshData();
@@ -1022,8 +1756,10 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     prevBtn.onclick = async () => {
       if (this.viewMode === "week") {
         this.currentDate.setDate(this.currentDate.getDate() - 7);
-      } else {
+      } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+      } else {
+        this.currentDate.setMonth(this.currentDate.getMonth() - 3);
       }
       await this.refreshData();
       this.renderView();
@@ -1033,62 +1769,74 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     nextBtn.onclick = async () => {
       if (this.viewMode === "week") {
         this.currentDate.setDate(this.currentDate.getDate() + 7);
-      } else {
+      } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+      } else {
+        this.currentDate.setMonth(this.currentDate.getMonth() + 3);
       }
       await this.refreshData();
       this.renderView();
     };
     const dateTitle = leftNav.createDiv("fcp-nav-date-title");
     if (this.viewMode === "week") {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      const startMonth = weekStart.toLocaleDateString("en-US", { month: "short" });
-      const endMonth = weekEnd.toLocaleDateString("en-US", { month: "short" });
-      const startYear = weekStart.getFullYear();
-      const endYear = weekEnd.getFullYear();
-      if (startYear !== endYear) {
-        dateTitle.textContent = `${startMonth} ${startYear} \u2013 ${endMonth} ${endYear}`;
-      } else if (startMonth !== endMonth) {
-        dateTitle.textContent = `${startMonth} \u2013 ${endMonth} ${startYear}`;
-      } else {
-        dateTitle.textContent = weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-      }
+      const { week, year } = this.getWeekNumberAndYear(this.currentDate);
+      dateTitle.textContent = `WEEK ${week}, ${year}`;
+    } else if (this.viewMode === "month") {
+      dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
     } else {
-      dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      const start = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 5);
+      const sM = start.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+      const eM = end.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+      dateTitle.textContent = `TIMELINE (${sM} \u2013 ${eM})`;
     }
     const modeSwitch = navBar.createDiv("fcp-mode-switch");
     const weekBtn = modeSwitch.createEl("button", {
       cls: `fcp-switch-btn ${this.viewMode === "week" ? "active" : ""}`,
-      text: "Week"
+      text: "WEEK"
     });
-    weekBtn.onclick = () => {
+    weekBtn.onclick = async () => {
       if (this.viewMode !== "week") {
         this.viewMode = "week";
+        await this.refreshData();
         this.renderView();
       }
     };
     const monthBtn = modeSwitch.createEl("button", {
       cls: `fcp-switch-btn ${this.viewMode === "month" ? "active" : ""}`,
-      text: "Month"
+      text: "MONTH"
     });
-    monthBtn.onclick = () => {
+    monthBtn.onclick = async () => {
       if (this.viewMode !== "month") {
         this.viewMode = "month";
+        await this.refreshData();
         this.renderView();
       }
     };
-    const pomoHeaderContainer = container.createDiv("fcp-header-slot");
-    const totalHours = this.calculateTotalHours();
-    const imminentEvent = this.getImminentEvent();
-    this.headerComponent = new PomodoroHeaderComponent(
-      pomoHeaderContainer,
-      this.pomodoro,
-      this.viewMode,
-      totalHours,
-      imminentEvent
-    );
+    const timelineBtn = modeSwitch.createEl("button", {
+      cls: `fcp-switch-btn ${this.viewMode === "timeline" ? "active" : ""}`,
+      text: "TIMELINE"
+    });
+    timelineBtn.onclick = async () => {
+      if (this.viewMode !== "timeline") {
+        this.viewMode = "timeline";
+        await this.refreshData();
+        this.renderView();
+      }
+    };
+    if (this.viewMode !== "timeline") {
+      const pomoHeaderContainer = container.createDiv("fcp-header-slot");
+      const totalHours = this.calculateTotalHours();
+      this.headerComponent = new PomodoroHeaderComponent(
+        pomoHeaderContainer,
+        this.pomodoro,
+        this.viewMode,
+        totalHours
+      );
+    } else {
+      this.headerComponent = null;
+    }
     const viewAreaContainer = container.createDiv("fcp-view-area");
     if (this.viewMode === "week") {
       const weekStart = this.getMondayOfWeek(this.currentDate);
@@ -1099,6 +1847,7 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
         this.entries,
         {
           onEntryCreate: async (date, startTime, endTime) => {
+            var _a;
             const newEntry = {
               id: "entry-" + Date.now(),
               title: "",
@@ -1110,10 +1859,12 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
               updatedAt: Date.now()
             };
             this.entries.push(newEntry);
+            (_a = this.weekComponent) == null ? void 0 : _a.upsertEntryLocal(newEntry);
             await this.storage.saveEntry(newEntry);
             return newEntry;
           },
           onEntryUpdate: async (entry, oldDate) => {
+            var _a;
             entry.updatedAt = Date.now();
             if (oldDate && oldDate !== entry.date) {
               const oldYearMonth = oldDate.substring(0, 7);
@@ -1122,14 +1873,21 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
                 await this.storage.deleteEntry(entry.id, oldDate);
               }
             }
+            const idx = this.entries.findIndex((e) => e.id === entry.id);
+            if (idx >= 0)
+              this.entries[idx] = entry;
+            else
+              this.entries.push(entry);
+            (_a = this.weekComponent) == null ? void 0 : _a.upsertEntryLocal(entry);
             await this.storage.saveEntry(entry);
             this.updateHeaderStats();
           },
           onEntryDelete: async (entry) => {
-            var _a;
+            var _a, _b;
             await this.storage.deleteEntry(entry.id, entry.date);
             this.entries = this.entries.filter((e) => e.id !== entry.id);
-            if (((_a = this.pomodoro.getFocusedTask()) == null ? void 0 : _a.id) === entry.id) {
+            (_a = this.weekComponent) == null ? void 0 : _a.deleteEntryLocal(entry.id);
+            if (((_b = this.pomodoro.getFocusedTask()) == null ? void 0 : _b.id) === entry.id) {
               this.pomodoro.setFocusedTask(null);
             }
             this.updateHeaderStats();
@@ -1149,9 +1907,10 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
             var _a;
             return (_a = this.pomodoro.getFocusedTask()) == null ? void 0 : _a.id;
           }
-        }
+        },
+        this.windows
       );
-    } else {
+    } else if (this.viewMode === "month") {
       this.monthComponent = new MonthViewRenderComponent(
         viewAreaContainer,
         this.currentDate.getFullYear(),
@@ -1179,16 +1938,99 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
                 await this.storage.deleteEntry(deleted.id, deleted.date);
                 await this.refreshData();
                 this.renderView();
+              },
+              this.windows
+            ).open();
+          }
+        }
+      );
+    } else {
+      this.timelineComponent = new TimelineViewRenderComponent(
+        this.app,
+        viewAreaContainer,
+        this.currentDate,
+        this.windows,
+        this.entries,
+        {
+          initialDayWidthPx: this.timelineZoomPx,
+          initialScrollLeft: this.timelineScrollLeft,
+          onStateChange: (zoom, scroll) => {
+            this.timelineZoomPx = zoom;
+            this.timelineScrollLeft = scroll;
+          },
+          onWindowClick: (window2) => {
+            new TimeWindowModal(
+              this.app,
+              window2,
+              async (updated) => {
+                var _a;
+                await this.storage.saveTimeWindow(updated);
+                this.windows = await this.storage.loadTimeWindows();
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
+              },
+              async (windowId) => {
+                var _a;
+                await this.storage.deleteTimeWindow(windowId);
+                this.windows = await this.storage.loadTimeWindows();
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
               }
             ).open();
+          },
+          onWindowCreate: () => {
+            new TimeWindowModal(
+              this.app,
+              null,
+              async (newWin) => {
+                var _a;
+                await this.storage.saveTimeWindow(newWin);
+                this.windows = await this.storage.loadTimeWindows();
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
+              }
+            ).open();
+          },
+          onEntryClick: (entry) => {
+            new TaskEditModal(
+              this.app,
+              entry,
+              async (updated) => {
+                var _a;
+                await this.storage.saveEntry(updated);
+                const idx = this.entries.findIndex((e) => e.id === updated.id);
+                if (idx >= 0)
+                  this.entries[idx] = updated;
+                else
+                  this.entries.push(updated);
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
+              },
+              async (deleted) => {
+                var _a;
+                await this.storage.deleteEntry(deleted.id, deleted.date);
+                this.entries = this.entries.filter((e) => e.id !== deleted.id);
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
+              },
+              this.windows
+            ).open();
+          },
+          onEntryUpdate: async (updated) => {
+            var _a;
+            await this.storage.saveEntry(updated);
+            const idx = this.entries.findIndex((e) => e.id === updated.id);
+            if (idx >= 0)
+              this.entries[idx] = updated;
+            else
+              this.entries.push(updated);
+            (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
           }
         }
       );
     }
   }
   updateHeaderStats() {
-    if (this.headerComponent) {
-      this.headerComponent.update(this.viewMode, this.calculateTotalHours(), this.getImminentEvent());
+    if (this.headerComponent && this.viewMode !== "timeline") {
+      this.headerComponent.update(
+        this.viewMode,
+        this.calculateTotalHours()
+      );
     }
   }
   formatDateIso(d) {
@@ -1196,21 +2038,6 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     const m = (d.getMonth() + 1).toString().padStart(2, "0");
     const day = d.getDate().toString().padStart(2, "0");
     return `${y}-${m}-${day}`;
-  }
-  getImminentEvent() {
-    const todayStr = this.formatDateIso(/* @__PURE__ */ new Date());
-    const todayTime = (/* @__PURE__ */ new Date(todayStr + "T00:00:00")).getTime();
-    const futureEvents = this.entries.filter((e) => e.type === "event" && e.date >= todayStr);
-    if (futureEvents.length === 0)
-      return null;
-    futureEvents.sort((a, b) => a.date.localeCompare(b.date));
-    const closest = futureEvents[0];
-    const eventTime = (/* @__PURE__ */ new Date(closest.date + "T00:00:00")).getTime();
-    const diffDays = Math.round((eventTime - todayTime) / (1e3 * 60 * 60 * 24));
-    return {
-      title: closest.title || "Untitled Event",
-      daysAway: Math.max(0, diffDays)
-    };
   }
   buildDailyHoursMap() {
     const map = /* @__PURE__ */ new Map();
@@ -1251,6 +2078,14 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
     const diff = date.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(date.setDate(diff));
   }
+  getWeekNumberAndYear(d) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 864e5 + 1) / 7);
+    return { week, year: date.getUTCFullYear() };
+  }
   getYearMonthString(d) {
     const y = d.getFullYear();
     const m = (d.getMonth() + 1).toString().padStart(2, "0");
@@ -1259,7 +2094,7 @@ var FocusCalendarView = class extends import_obsidian2.ItemView {
 };
 
 // src/storage.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 var StorageManager = class {
   constructor(app, settingsGetter) {
     this.isLocalSaving = false;
@@ -1267,7 +2102,7 @@ var StorageManager = class {
     this.settingsGetter = settingsGetter;
   }
   get dataFolder() {
-    return (0, import_obsidian3.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
+    return (0, import_obsidian4.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
   }
   async ensureDataFolderExists() {
     const folderPath = this.dataFolder;
@@ -1277,10 +2112,63 @@ var StorageManager = class {
     }
   }
   getMonthFilePath(yearMonth) {
-    return (0, import_obsidian3.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
+    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
   }
   getPomodoroLogFilePath(yearMonth) {
-    return (0, import_obsidian3.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+  }
+  getWindowsFilePath() {
+    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/windows.json`);
+  }
+  async loadTimeWindows() {
+    await this.ensureDataFolderExists();
+    const path = this.getWindowsFilePath();
+    try {
+      const exists = await this.app.vault.adapter.exists(path);
+      if (!exists)
+        return [];
+      const content = await this.app.vault.adapter.read(path);
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error("Failed to read time windows:", e);
+      return [];
+    }
+  }
+  async saveTimeWindows(windows) {
+    await this.ensureDataFolderExists();
+    const path = this.getWindowsFilePath();
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, JSON.stringify(windows, null, 2));
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
+  }
+  async saveTimeWindow(window2) {
+    const windows = await this.loadTimeWindows();
+    const idx = windows.findIndex((w) => w.id === window2.id);
+    if (idx >= 0) {
+      windows[idx] = window2;
+    } else {
+      windows.push(window2);
+    }
+    windows.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    await this.saveTimeWindows(windows);
+  }
+  async deleteTimeWindow(windowId) {
+    const windows = await this.loadTimeWindows();
+    const filtered = windows.filter((w) => w.id !== windowId);
+    await this.saveTimeWindows(filtered);
+  }
+  async loadEntriesForRange(yearMonths) {
+    const entryMap = /* @__PURE__ */ new Map();
+    for (const ym of yearMonths) {
+      const entries = await this.loadEntriesForMonth(ym);
+      for (const entry of entries) {
+        entryMap.set(entry.id, entry);
+      }
+    }
+    return Array.from(entryMap.values());
   }
   async loadEntriesForMonth(yearMonth) {
     await this.ensureDataFolderExists();
@@ -1319,7 +2207,10 @@ var StorageManager = class {
     await this.saveEntriesForMonth(yearMonth, currentEntries);
   }
   async deleteEntry(entryId, date) {
-    const yearMonth = date.substring(0, 7);
+    let yearMonth = date && date.length >= 7 ? date.substring(0, 7) : "";
+    if (!yearMonth) {
+      yearMonth = (/* @__PURE__ */ new Date()).toISOString().substring(0, 7);
+    }
     const currentEntries = await this.loadEntriesForMonth(yearMonth);
     const filtered = currentEntries.filter((e) => e.id !== entryId);
     await this.saveEntriesForMonth(yearMonth, filtered);
@@ -1382,7 +2273,7 @@ var StorageManager = class {
 };
 
 // src/pomodoro.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var PomodoroManager = class {
   constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
     this.mode = "work";
@@ -1424,7 +2315,7 @@ var PomodoroManager = class {
     this.focusedTask = task;
     if (!task && this.mode === "work" && this.isRunning) {
       this.pause();
-      new import_obsidian4.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
+      new import_obsidian5.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
     }
     this.notifyState();
   }
@@ -1435,7 +2326,7 @@ var PomodoroManager = class {
     if (this.isRunning)
       return true;
     if (this.mode === "work" && !this.focusedTask) {
-      new import_obsidian4.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
+      new import_obsidian5.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
       return false;
     }
     this.isRunning = true;
@@ -1549,8 +2440,8 @@ var PomodoroManager = class {
 };
 
 // src/settings.ts
-var import_obsidian5 = require("obsidian");
-var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
+var import_obsidian6 = require("obsidian");
+var FocusCalendarSettingTab = class extends import_obsidian6.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -1560,7 +2451,7 @@ var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "Calendar & Focus Settings" });
     containerEl.createEl("h3", { text: "Pomodoro Timer" });
-    new import_obsidian5.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian6.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.workDurationMinutes = val;
@@ -1568,7 +2459,7 @@ var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian5.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian6.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.breakDurationMinutes = val;
@@ -1576,41 +2467,41 @@ var FocusCalendarSettingTab = class extends import_obsidian5.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian5.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
+    new import_obsidian6.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
       this.plugin.settings.autoStartBreak = value;
       await this.plugin.saveSettings();
     }));
     containerEl.createEl("h3", { text: "Audio Notifications" });
-    const focusSoundSetting = new import_obsidian5.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
+    const focusSoundSetting = new import_obsidian6.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.focusEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Focus completion sound").onClick(async () => {
       const path = (this.plugin.settings.focusEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian5.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian6.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian5.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian6.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
-    const breakSoundSetting = new import_obsidian5.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
+    const breakSoundSetting = new import_obsidian6.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.breakEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Break completion sound").onClick(async () => {
       const path = (this.plugin.settings.breakEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian5.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian6.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian5.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian6.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
     containerEl.createEl("h3", { text: "Storage" });
-    new import_obsidian5.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
+    new import_obsidian6.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
       this.plugin.settings.dataDirectory = value.trim() || "calendar-data";
       await this.plugin.saveSettings();
     }));
@@ -1626,7 +2517,7 @@ var DEFAULT_SETTINGS = {
   focusEndSoundPath: "",
   breakEndSoundPath: ""
 };
-var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
+var FocusCalendarPlugin = class extends import_obsidian7.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -1804,7 +2695,7 @@ var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
   async playVaultAudio(filePath, showNoticeOnFail = false) {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian6.TFile) {
+      if (file instanceof import_obsidian7.TFile) {
         const resourcePath = this.app.vault.getResourcePath(file);
         const audio = new Audio(resourcePath);
         audio.volume = 0.5;
@@ -1814,14 +2705,14 @@ var FocusCalendarPlugin = class extends import_obsidian6.Plugin {
         const msg = `Focus Calendar: Sound file not found at path: "${filePath}"`;
         console.warn(msg);
         if (showNoticeOnFail) {
-          new import_obsidian6.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
+          new import_obsidian7.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
         }
         return false;
       }
     } catch (err) {
       console.error("Focus Calendar: Failed to play audio file from vault", err);
       if (showNoticeOnFail) {
-        new import_obsidian6.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
+        new import_obsidian7.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
       }
       return false;
     }

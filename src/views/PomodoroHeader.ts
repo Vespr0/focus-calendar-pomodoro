@@ -1,32 +1,28 @@
 import { PomodoroManager } from '../pomodoro';
-import { ViewMode, ImminentEventInfo } from '../types';
+import { ViewMode } from '../types';
 
 export class PomodoroHeaderComponent {
   private containerEl: HTMLElement;
   private pomodoroManager: PomodoroManager;
   private viewMode: ViewMode;
   private totalHours: number; // in hours
-  private imminentEvent: ImminentEventInfo | null;
 
   constructor(
     containerEl: HTMLElement,
     pomodoroManager: PomodoroManager,
     viewMode: ViewMode,
-    totalHours: number,
-    imminentEvent: ImminentEventInfo | null = null
+    totalHours: number
   ) {
     this.containerEl = containerEl;
     this.pomodoroManager = pomodoroManager;
     this.viewMode = viewMode;
     this.totalHours = totalHours;
-    this.imminentEvent = imminentEvent;
     this.render();
   }
 
-  public update(viewMode: ViewMode, totalHours: number, imminentEvent: ImminentEventInfo | null = null) {
+  public update(viewMode: ViewMode, totalHours: number) {
     this.viewMode = viewMode;
     this.totalHours = totalHours;
-    this.imminentEvent = imminentEvent;
     this.render();
   }
 
@@ -44,34 +40,13 @@ export class PomodoroHeaderComponent {
   }
 
   private renderMonthHeader() {
-    // Left: Imminent event notification
-    const leftDiv = this.containerEl.createDiv('fcp-pomo-left-imminent');
-
-    if (this.imminentEvent) {
-      let daysStr = '';
-      if (this.imminentEvent.daysAway === 0) {
-        daysStr = 'today';
-      } else if (this.imminentEvent.daysAway === 1) {
-        daysStr = '1 day away';
-      } else {
-        daysStr = `${this.imminentEvent.daysAway} days away`;
-      }
-
-      leftDiv.innerHTML = `
-        <span class="fcp-imminent-badge">UPCOMING EVENT</span>
-        <span class="fcp-imminent-text"><strong>${this.escapeHtml(this.imminentEvent.title)}</strong> is ${daysStr}</span>
-      `;
-    } else {
-      leftDiv.innerHTML = `<span class="fcp-imminent-text muted">No upcoming events</span>`;
-    }
-
-    // Right: Monthly Studied Hours Card
+    this.containerEl.createDiv('fcp-pomo-left-spacer');
     const rightSection = this.containerEl.createDiv('fcp-pomo-right');
     const hoursCard = rightSection.createDiv('fcp-hours-card');
 
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
-      <div class="fcp-hours-sub">THIS MONTH</div>
+      <div class="fcp-hours-sub">This month</div>
     `;
   }
 
@@ -88,8 +63,8 @@ export class PomodoroHeaderComponent {
     // Center section: Radial SVG Ring + Controls (centered)
     const centerSection = this.containerEl.createDiv('fcp-pomo-center');
 
-    const svgSize = 64;
-    const strokeWidth = 5;
+    const svgSize = 52;
+    const strokeWidth = 4;
     const radius = (svgSize - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const progressRatio = state.totalDurationSeconds > 0
@@ -163,7 +138,7 @@ export class PomodoroHeaderComponent {
 
     hoursCard.innerHTML = `
       <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
-      <div class="fcp-hours-sub">THIS WEEK</div>
+      <div class="fcp-hours-sub">This week</div>
     `;
   }
 

@@ -1,5 +1,5 @@
 import { App, normalizePath } from 'obsidian';
-import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings } from './types';
+import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings, TimeWindow } from './types';
 
 export class StorageManager {
   private app: App;
@@ -29,6 +29,63 @@ export class StorageManager {
 
   private getPomodoroLogFilePath(yearMonth: string): string {
     return normalizePath(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+  }
+
+  private getWindowsFilePath(): string {
+    return normalizePath(`${this.dataFolder}/windows.json`);
+  }
+
+  public async loadTimeWindows(): Promise<TimeWindow[]> {
+    await this.ensureDataFolderExists();
+    const path = this.getWindowsFilePath();
+    try {
+      const exists = await this.app.vault.adapter.exists(path);
+      if (!exists) return [];
+      const content = await this.app.vault.adapter.read(path);
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? (parsed as TimeWindow[]) : [];
+    } catch (e) {
+      console.error('Failed to read time windows:', e);
+      return [];
+    }
+  }
+
+  public async saveTimeWindows(windows: TimeWindow[]): Promise<void> {
+    await this.ensureDataFolderExists();
+    const path = this.getWindowsFilePath();
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, JSON.stringify(windows, null, 2));
+    setTimeout(() => { this.isLocalSaving = false; }, 500);
+  }
+
+  public async saveTimeWindow(window: TimeWindow): Promise<void> {
+    const windows = await this.loadTimeWindows();
+    const idx = windows.findIndex(w => w.id === window.id);
+    if (idx >= 0) {
+      windows[idx] = window;
+    } else {
+      windows.push(window);
+    }
+    // Keep sorted by startDate
+    windows.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    await this.saveTimeWindows(windows);
+  }
+
+  public async deleteTimeWindow(windowId: string): Promise<void> {
+    const windows = await this.loadTimeWindows();
+    const filtered = windows.filter(w => w.id !== windowId);
+    await this.saveTimeWindows(filtered);
+  }
+
+  public async loadEntriesForRange(yearMonths: string[]): Promise<CalendarEntry[]> {
+    const entryMap = new Map<string, CalendarEntry>();
+    for (const ym of yearMonths) {
+      const entries = await this.loadEntriesForMonth(ym);
+      for (const entry of entries) {
+        entryMap.set(entry.id, entry);
+      }
+    }
+    return Array.from(entryMap.values());
   }
 
   public async loadEntriesForMonth(yearMonth: string): Promise<CalendarEntry[]> {
@@ -69,8 +126,11 @@ export class StorageManager {
     await this.saveEntriesForMonth(yearMonth, currentEntries);
   }
 
-  public async deleteEntry(entryId: string, date: string): Promise<void> {
-    const yearMonth = date.substring(0, 7);
+  public async deleteEntry(entryId: string, date?: string): Promise<void> {
+    let yearMonth = date && date.length >= 7 ? date.substring(0, 7) : '';
+    if (!yearMonth) {
+      yearMonth = new Date().toISOString().substring(0, 7);
+    }
     const currentEntries = await this.loadEntriesForMonth(yearMonth);
     const filtered = currentEntries.filter(e => e.id !== entryId);
     await this.saveEntriesForMonth(yearMonth, filtered);

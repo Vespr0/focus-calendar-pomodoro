@@ -1,13 +1,26 @@
-export type EntryType = 'task' | 'event';
+export type EntryType = 'task' | 'event' | 'crucial';
 
 export interface CalendarEntry {
   id: string;
   title: string;
-  description?: string; // Optional description for task/event
+  description?: string;
   date: string; // YYYY-MM-DD
-  startTime: string; // HH:mm (24h format, e.g. "09:30")
-  endTime: string;   // HH:mm (24h format, e.g. "10:30")
-  type: EntryType;   // 'task' (pastel blue) or 'event' (green)
+  startTime?: string; // HH:mm or empty for all-day
+  endTime?: string;   // HH:mm or empty for all-day
+  allDay?: boolean;   // true if untimed / all-day
+  type: EntryType;    // 'task' | 'event' | 'crucial'
+  windowId?: string;  // Explicitly assigned time window
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TimeWindow {
+  id: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  color?: string;    // 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'purple' or custom hex
+  description?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -45,7 +58,7 @@ export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   breakEndSoundPath: ''
 };
 
-export type ViewMode = 'month' | 'week';
+export type ViewMode = 'month' | 'week' | 'timeline';
 
 export interface ImminentEventInfo {
   title: string;

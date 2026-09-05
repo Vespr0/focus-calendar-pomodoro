@@ -1,10 +1,12 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
-import { ViewMode, CalendarEntry, PomodoroLogSession, ImminentEventInfo } from '../types';
+import { ViewMode, CalendarEntry, PomodoroLogSession, TimeWindow } from '../types';
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
 import { PomodoroHeaderComponent } from './PomodoroHeader';
 import { WeekViewRenderComponent, TaskEditModal } from './WeekViewRender';
 import { MonthViewRenderComponent } from './MonthViewRender';
+import { TimelineViewRenderComponent } from './TimelineViewRender';
+import { TimeWindowModal } from './TimeWindowModal';
 
 export const VIEW_TYPE_FOCUS_CALENDAR = 'focus-calendar-pomodoro-view';
 
@@ -18,9 +20,13 @@ export class FocusCalendarView extends ItemView {
   private headerComponent: PomodoroHeaderComponent | null = null;
   private weekComponent: WeekViewRenderComponent | null = null;
   private monthComponent: MonthViewRenderComponent | null = null;
+  private timelineComponent: TimelineViewRenderComponent | null = null;
+  private timelineZoomPx: number = 16;
+  private timelineScrollLeft: number = -1;
 
   private entries: CalendarEntry[] = [];
   private pomoLogs: PomodoroLogSession[] = [];
+  private windows: TimeWindow[] = [];
 
   constructor(leaf: WorkspaceLeaf, storage: StorageManager, pomodoro: PomodoroManager) {
     super(leaf);
@@ -50,16 +56,24 @@ export class FocusCalendarView extends ItemView {
     const year = targetDate.getFullYear();
     const month = targetDate.getMonth();
 
-    // Load previous, current, and next month so cross-month weeks
-    // and month-view trailing/leading days are completely populated.
-    const prevMonthDate = new Date(year, month - 1, 1);
-    const nextMonthDate = new Date(year, month + 1, 1);
+    this.windows = await this.storage.loadTimeWindows();
 
-    const monthsToLoad = [
-      this.getYearMonthString(prevMonthDate),
-      this.getYearMonthString(targetDate),
-      this.getYearMonthString(nextMonthDate)
-    ];
+    const monthsToLoad = new Set<string>();
+
+    if (this.viewMode === 'timeline') {
+      // In timeline view, load a 9-month window to cover academic planning
+      const start = new Date(year, month - 1, 1);
+      for (let i = 0; i < 9; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+        monthsToLoad.add(this.getYearMonthString(d));
+      }
+    } else {
+      const prevMonthDate = new Date(year, month - 1, 1);
+      const nextMonthDate = new Date(year, month + 1, 1);
+      monthsToLoad.add(this.getYearMonthString(prevMonthDate));
+      monthsToLoad.add(this.getYearMonthString(targetDate));
+      monthsToLoad.add(this.getYearMonthString(nextMonthDate));
+    }
 
     const entryMap = new Map<string, CalendarEntry>();
     const logMap = new Map<string, PomodoroLogSession>();
@@ -80,11 +94,13 @@ export class FocusCalendarView extends ItemView {
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.addClass('fcp-main-container');
+    container.style.padding = '0';
+    container.style.margin = '0';
 
     const navBar = container.createDiv('fcp-nav-bar');
 
     const leftNav = navBar.createDiv('fcp-nav-left');
-    const todayBtn = leftNav.createEl('button', { cls: 'fcp-btn', text: 'Today' });
+    const todayBtn = leftNav.createEl('button', { cls: 'fcp-btn', text: 'TODAY' });
     todayBtn.onclick = async () => {
       this.currentDate = new Date();
       await this.refreshData();
@@ -96,8 +112,10 @@ export class FocusCalendarView extends ItemView {
     prevBtn.onclick = async () => {
       if (this.viewMode === 'week') {
         this.currentDate.setDate(this.currentDate.getDate() - 7);
-      } else {
+      } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+      } else {
+        this.currentDate.setMonth(this.currentDate.getMonth() - 3);
       }
       await this.refreshData();
       this.renderView();
@@ -108,8 +126,10 @@ export class FocusCalendarView extends ItemView {
     nextBtn.onclick = async () => {
       if (this.viewMode === 'week') {
         this.currentDate.setDate(this.currentDate.getDate() + 7);
-      } else {
+      } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+      } else {
+        this.currentDate.setMonth(this.currentDate.getMonth() + 3);
       }
       await this.refreshData();
       this.renderView();
@@ -117,60 +137,68 @@ export class FocusCalendarView extends ItemView {
 
     const dateTitle = leftNav.createDiv('fcp-nav-date-title');
     if (this.viewMode === 'week') {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-
-      const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
-      const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
-      const startYear = weekStart.getFullYear();
-      const endYear = weekEnd.getFullYear();
-
-      if (startYear !== endYear) {
-        dateTitle.textContent = `${startMonth} ${startYear} – ${endMonth} ${endYear}`;
-      } else if (startMonth !== endMonth) {
-        dateTitle.textContent = `${startMonth} – ${endMonth} ${startYear}`;
-      } else {
-        dateTitle.textContent = weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      }
+      const { week, year } = this.getWeekNumberAndYear(this.currentDate);
+      dateTitle.textContent = `WEEK ${week}, ${year}`;
+    } else if (this.viewMode === 'month') {
+      dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
     } else {
-      dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const start = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 5);
+      const sM = start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+      const eM = end.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
+      dateTitle.textContent = `TIMELINE (${sM} – ${eM})`;
     }
 
     const modeSwitch = navBar.createDiv('fcp-mode-switch');
     const weekBtn = modeSwitch.createEl('button', {
       cls: `fcp-switch-btn ${this.viewMode === 'week' ? 'active' : ''}`,
-      text: 'Week'
+      text: 'WEEK'
     });
-    weekBtn.onclick = () => {
+    weekBtn.onclick = async () => {
       if (this.viewMode !== 'week') {
         this.viewMode = 'week';
+        await this.refreshData();
         this.renderView();
       }
     };
 
     const monthBtn = modeSwitch.createEl('button', {
       cls: `fcp-switch-btn ${this.viewMode === 'month' ? 'active' : ''}`,
-      text: 'Month'
+      text: 'MONTH'
     });
-    monthBtn.onclick = () => {
+    monthBtn.onclick = async () => {
       if (this.viewMode !== 'month') {
         this.viewMode = 'month';
+        await this.refreshData();
         this.renderView();
       }
     };
 
-    const pomoHeaderContainer = container.createDiv('fcp-header-slot');
-    const totalHours = this.calculateTotalHours();
-    const imminentEvent = this.getImminentEvent();
+    const timelineBtn = modeSwitch.createEl('button', {
+      cls: `fcp-switch-btn ${this.viewMode === 'timeline' ? 'active' : ''}`,
+      text: 'TIMELINE'
+    });
+    timelineBtn.onclick = async () => {
+      if (this.viewMode !== 'timeline') {
+        this.viewMode = 'timeline';
+        await this.refreshData();
+        this.renderView();
+      }
+    };
 
-    this.headerComponent = new PomodoroHeaderComponent(
-      pomoHeaderContainer,
-      this.pomodoro,
-      this.viewMode,
-      totalHours,
-      imminentEvent
-    );
+    if (this.viewMode !== 'timeline') {
+      const pomoHeaderContainer = container.createDiv('fcp-header-slot');
+      const totalHours = this.calculateTotalHours();
+      this.headerComponent = new PomodoroHeaderComponent(
+        pomoHeaderContainer,
+        this.pomodoro,
+        this.viewMode,
+        totalHours
+      );
+    } else {
+      this.headerComponent = null;
+    }
 
     const viewAreaContainer = container.createDiv('fcp-view-area');
 
@@ -194,6 +222,7 @@ export class FocusCalendarView extends ItemView {
               updatedAt: Date.now()
             };
             this.entries.push(newEntry);
+            this.weekComponent?.upsertEntryLocal(newEntry);
             await this.storage.saveEntry(newEntry);
             return newEntry;
           },
@@ -206,12 +235,17 @@ export class FocusCalendarView extends ItemView {
                 await this.storage.deleteEntry(entry.id, oldDate);
               }
             }
+            const idx = this.entries.findIndex(e => e.id === entry.id);
+            if (idx >= 0) this.entries[idx] = entry;
+            else this.entries.push(entry);
+            this.weekComponent?.upsertEntryLocal(entry);
             await this.storage.saveEntry(entry);
             this.updateHeaderStats();
           },
           onEntryDelete: async (entry) => {
             await this.storage.deleteEntry(entry.id, entry.date);
             this.entries = this.entries.filter(e => e.id !== entry.id);
+            this.weekComponent?.deleteEntryLocal(entry.id);
             if (this.pomodoro.getFocusedTask()?.id === entry.id) {
               this.pomodoro.setFocusedTask(null);
             }
@@ -228,9 +262,10 @@ export class FocusCalendarView extends ItemView {
             }
           },
           getFocusedTaskId: () => this.pomodoro.getFocusedTask()?.id
-        }
+        },
+        this.windows
       );
-    } else {
+    } else if (this.viewMode === 'month') {
       this.monthComponent = new MonthViewRenderComponent(
         viewAreaContainer,
         this.currentDate.getFullYear(),
@@ -258,8 +293,78 @@ export class FocusCalendarView extends ItemView {
                 await this.storage.deleteEntry(deleted.id, deleted.date);
                 await this.refreshData();
                 this.renderView();
+              },
+              this.windows
+            ).open();
+          }
+        }
+      );
+    } else {
+      this.timelineComponent = new TimelineViewRenderComponent(
+        this.app,
+        viewAreaContainer,
+        this.currentDate,
+        this.windows,
+        this.entries,
+        {
+          initialDayWidthPx: this.timelineZoomPx,
+          initialScrollLeft: this.timelineScrollLeft,
+          onStateChange: (zoom, scroll) => {
+            this.timelineZoomPx = zoom;
+            this.timelineScrollLeft = scroll;
+          },
+          onWindowClick: (window) => {
+            new TimeWindowModal(
+              this.app,
+              window,
+              async (updated) => {
+                await this.storage.saveTimeWindow(updated);
+                this.windows = await this.storage.loadTimeWindows();
+                this.timelineComponent?.updateData(this.windows, this.entries);
+              },
+              async (windowId) => {
+                await this.storage.deleteTimeWindow(windowId);
+                this.windows = await this.storage.loadTimeWindows();
+                this.timelineComponent?.updateData(this.windows, this.entries);
               }
             ).open();
+          },
+          onWindowCreate: () => {
+            new TimeWindowModal(
+              this.app,
+              null,
+              async (newWin) => {
+                await this.storage.saveTimeWindow(newWin);
+                this.windows = await this.storage.loadTimeWindows();
+                this.timelineComponent?.updateData(this.windows, this.entries);
+              }
+            ).open();
+          },
+          onEntryClick: (entry) => {
+            new TaskEditModal(
+              this.app,
+              entry,
+              async (updated) => {
+                await this.storage.saveEntry(updated);
+                const idx = this.entries.findIndex(e => e.id === updated.id);
+                if (idx >= 0) this.entries[idx] = updated;
+                else this.entries.push(updated);
+                this.timelineComponent?.updateData(this.windows, this.entries);
+              },
+              async (deleted) => {
+                await this.storage.deleteEntry(deleted.id, deleted.date);
+                this.entries = this.entries.filter(e => e.id !== deleted.id);
+                this.timelineComponent?.updateData(this.windows, this.entries);
+              },
+              this.windows
+            ).open();
+          },
+          onEntryUpdate: async (updated) => {
+            await this.storage.saveEntry(updated);
+            const idx = this.entries.findIndex(e => e.id === updated.id);
+            if (idx >= 0) this.entries[idx] = updated;
+            else this.entries.push(updated);
+            this.timelineComponent?.updateData(this.windows, this.entries);
           }
         }
       );
@@ -267,8 +372,11 @@ export class FocusCalendarView extends ItemView {
   }
 
   public updateHeaderStats() {
-    if (this.headerComponent) {
-      this.headerComponent.update(this.viewMode, this.calculateTotalHours(), this.getImminentEvent());
+    if (this.headerComponent && this.viewMode !== 'timeline') {
+      this.headerComponent.update(
+        this.viewMode,
+        this.calculateTotalHours()
+      );
     }
   }
 
@@ -277,25 +385,6 @@ export class FocusCalendarView extends ItemView {
     const m = (d.getMonth() + 1).toString().padStart(2, '0');
     const day = d.getDate().toString().padStart(2, '0');
     return `${y}-${m}-${day}`;
-  }
-
-  private getImminentEvent(): ImminentEventInfo | null {
-    const todayStr = this.formatDateIso(new Date());
-    const todayTime = new Date(todayStr + 'T00:00:00').getTime();
-
-    const futureEvents = this.entries.filter(e => e.type === 'event' && e.date >= todayStr);
-    if (futureEvents.length === 0) return null;
-
-    futureEvents.sort((a, b) => a.date.localeCompare(b.date));
-    const closest = futureEvents[0];
-
-    const eventTime = new Date(closest.date + 'T00:00:00').getTime();
-    const diffDays = Math.round((eventTime - todayTime) / (1000 * 60 * 60 * 24));
-
-    return {
-      title: closest.title || 'Untitled Event',
-      daysAway: Math.max(0, diffDays)
-    };
   }
 
   private buildDailyHoursMap(): Map<string, number> {
@@ -340,6 +429,15 @@ export class FocusCalendarView extends ItemView {
     const day = date.getDay();
     const diff = date.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(date.setDate(diff));
+  }
+
+  private getWeekNumberAndYear(d: Date): { week: number; year: number } {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return { week, year: date.getUTCFullYear() };
   }
 
   private getYearMonthString(d: Date): string {

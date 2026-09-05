@@ -128,18 +128,26 @@ export class MonthViewRenderComponent {
         this.callbacks.onDayClick(cellIso);
       });
 
-      const dayEvents = this.entries.filter(e => e.date === cellIso && e.type === 'event');
+      const dayEvents = this.entries.filter(e => e.date === cellIso && (e.type === 'event' || e.type === 'crucial'));
 
       if (dayEvents.length > 0) {
+        // Show crucial events first
+        dayEvents.sort((a, b) => {
+          if (a.type === 'crucial' && b.type !== 'crucial') return -1;
+          if (a.type !== 'crucial' && b.type === 'crucial') return 1;
+          return (a.startTime || '').localeCompare(b.startTime || '');
+        });
+
         const eventsContainer = cellEl.createDiv('fcp-month-events-container');
 
         dayEvents.forEach(evt => {
+          const isCrucial = evt.type === 'crucial';
           const evtEl = eventsContainer.createDiv(`fcp-month-event-item type-${evt.type || 'event'}`);
-          const timeSuffix = evt.startTime ? ` (${evt.startTime} - ${evt.endTime})` : '';
-          evtEl.title = `${evt.title || 'Event'}${timeSuffix}`;
+          const timeSuffix = evt.startTime && evt.endTime ? ` (${evt.startTime} - ${evt.endTime})` : '';
+          evtEl.title = `${evt.title || 'Untitled'}${timeSuffix}`;
           evtEl.innerHTML = `
-            <span class="fcp-evt-dot"></span>
-            <span class="fcp-evt-title">${this.escapeHtml(evt.title || 'Event')}</span>
+            ${isCrucial ? '<span class="fcp-evt-diamond">◆</span>' : '<span class="fcp-evt-dot"></span>'}
+            <span class="fcp-evt-title">${this.escapeHtml(evt.title || 'Untitled')}</span>
           `;
           evtEl.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -169,6 +177,7 @@ export class MonthViewRenderComponent {
   }
 
   private renderBreakdownPanel(parentEl: HTMLElement) {
+    const breakdownPanel = parentEl.createDiv('fcp-month-breakdown-panel');
     const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}`;
 
     // Group all actual focus time logs for current month case-insensitively
@@ -217,10 +226,9 @@ export class MonthViewRenderComponent {
       }))
       .sort((a, b) => b.totalHours - a.totalHours);
 
-    const breakdownPanel = parentEl.createDiv('fcp-month-breakdown-panel');
     const header = breakdownPanel.createDiv('fcp-breakdown-header');
     header.innerHTML = `
-      <div class="fcp-breakdown-title">Statistics</div>
+      <div class="fcp-breakdown-title">STATISTICS</div>
       <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
     `;
 
