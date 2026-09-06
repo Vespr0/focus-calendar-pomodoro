@@ -2281,6 +2281,7 @@ var PomodoroManager = class {
     this.timeLeftSeconds = 40 * 60;
     this.totalDurationSeconds = 40 * 60;
     this.timerId = null;
+    this.lastTickTime = 0;
     this.focusedTask = null;
     this.activeWorkSecondsAccumulated = 0;
     this.settingsGetter = settingsGetter;
@@ -2288,7 +2289,27 @@ var PomodoroManager = class {
     this.onSessionComplete = onSessionComplete;
     this.playAudioCallback = playAudioCallback;
     this.onBreakStartCallback = onBreakStartCallback;
+    this.boundVisibilityOrFocusHandler = () => {
+      if (this.isRunning) {
+        this.tick();
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", this.boundVisibilityOrFocusHandler);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.boundVisibilityOrFocusHandler);
+    }
     this.resetTimer();
+  }
+  destroy() {
+    this.pause();
+    if (typeof window !== "undefined") {
+      window.removeEventListener("focus", this.boundVisibilityOrFocusHandler);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.boundVisibilityOrFocusHandler);
+    }
   }
   getSettings() {
     return this.settingsGetter();
@@ -2330,11 +2351,15 @@ var PomodoroManager = class {
       return false;
     }
     this.isRunning = true;
+    this.lastTickTime = Date.now();
     this.timerId = window.setInterval(() => this.tick(), 1e3);
     this.notifyState();
     return true;
   }
   pause() {
+    if (!this.isRunning)
+      return;
+    this.tick();
     if (!this.isRunning)
       return;
     this.isRunning = false;
@@ -2374,14 +2399,22 @@ var PomodoroManager = class {
     this.resetTimer();
   }
   tick() {
+    if (!this.isRunning)
+      return;
+    const now = Date.now();
+    const elapsedSeconds = Math.max(0, Math.floor((now - this.lastTickTime) / 1e3));
+    if (elapsedSeconds <= 0)
+      return;
+    this.lastTickTime += elapsedSeconds * 1e3;
+    const secondsToDeduct = Math.min(elapsedSeconds, this.timeLeftSeconds);
     if (this.mode === "work") {
-      this.activeWorkSecondsAccumulated++;
+      this.activeWorkSecondsAccumulated += secondsToDeduct;
     }
-    if (this.timeLeftSeconds > 0) {
-      this.timeLeftSeconds--;
-      this.notifyState();
-    } else {
+    this.timeLeftSeconds = Math.max(0, this.timeLeftSeconds - secondsToDeduct);
+    if (this.timeLeftSeconds <= 0) {
       this.onCompleted();
+    } else {
+      this.notifyState();
     }
   }
   flushWorkLog() {
@@ -2513,7 +2546,7 @@ var DEFAULT_SETTINGS = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
   dataDirectory: "calendar-data",
-  autoStartBreak: true,
+  autoStartBreak: false,
   focusEndSoundPath: "",
   breakEndSoundPath: ""
 };
@@ -2733,7 +2766,7 @@ var FocusCalendarPlugin = class extends import_obsidian7.Plugin {
     workspace.revealLeaf(leaf);
   }
   onunload() {
-    this.pomodoro.pause();
+    this.pomodoro.destroy();
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());

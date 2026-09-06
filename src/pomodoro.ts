@@ -17,6 +17,7 @@ export class PomodoroManager {
   private timeLeftSeconds: number = 40 * 60;
   private totalDurationSeconds: number = 40 * 60;
   private timerId: number | null = null;
+  private lastTickTime: number = 0;
   private focusedTask: CalendarEntry | null = null;
   private activeWorkSecondsAccumulated: number = 0;
   private settingsGetter: () => FocusCalendarSettings;
@@ -24,6 +25,7 @@ export class PomodoroManager {
   private onSessionComplete: (session: PomodoroLogSession) => void;
   private playAudioCallback?: (filePath: string) => void;
   private onBreakStartCallback?: () => void;
+  private boundVisibilityOrFocusHandler: () => void;
 
   constructor(
     settingsGetter: () => FocusCalendarSettings,
@@ -37,7 +39,31 @@ export class PomodoroManager {
     this.onSessionComplete = onSessionComplete;
     this.playAudioCallback = playAudioCallback;
     this.onBreakStartCallback = onBreakStartCallback;
+
+    this.boundVisibilityOrFocusHandler = () => {
+      if (this.isRunning) {
+        this.tick();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', this.boundVisibilityOrFocusHandler);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.boundVisibilityOrFocusHandler);
+    }
+
     this.resetTimer();
+  }
+
+  public destroy() {
+    this.pause();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', this.boundVisibilityOrFocusHandler);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.boundVisibilityOrFocusHandler);
+    }
   }
 
   public getSettings() {
@@ -83,12 +109,15 @@ export class PomodoroManager {
       return false;
     }
     this.isRunning = true;
+    this.lastTickTime = Date.now();
     this.timerId = window.setInterval(() => this.tick(), 1000);
     this.notifyState();
     return true;
   }
 
   public pause() {
+    if (!this.isRunning) return;
+    this.tick();
     if (!this.isRunning) return;
     this.isRunning = false;
     if (this.timerId !== null) {
@@ -131,14 +160,24 @@ export class PomodoroManager {
   }
 
   private tick() {
+    if (!this.isRunning) return;
+
+    const now = Date.now();
+    const elapsedSeconds = Math.max(0, Math.floor((now - this.lastTickTime) / 1000));
+    if (elapsedSeconds <= 0) return;
+
+    this.lastTickTime += elapsedSeconds * 1000;
+
+    const secondsToDeduct = Math.min(elapsedSeconds, this.timeLeftSeconds);
     if (this.mode === 'work') {
-      this.activeWorkSecondsAccumulated++;
+      this.activeWorkSecondsAccumulated += secondsToDeduct;
     }
-    if (this.timeLeftSeconds > 0) {
-      this.timeLeftSeconds--;
-      this.notifyState();
-    } else {
+    this.timeLeftSeconds = Math.max(0, this.timeLeftSeconds - secondsToDeduct);
+
+    if (this.timeLeftSeconds <= 0) {
       this.onCompleted();
+    } else {
+      this.notifyState();
     }
   }
 

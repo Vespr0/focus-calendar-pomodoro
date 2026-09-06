@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS: FocusCalendarSettings = {
   workDurationMinutes: 40,
   breakDurationMinutes: 10,
   dataDirectory: 'calendar-data',
-  autoStartBreak: true,
+  autoStartBreak: false,
   focusEndSoundPath: '',
   breakEndSoundPath: ''
 };
@@ -258,7 +258,7 @@ export default class FocusCalendarPlugin extends Plugin {
   }
 
   onunload() {
-    this.pomodoro.pause();
+    this.pomodoro.destroy();
   }
 
   async loadSettings() {
