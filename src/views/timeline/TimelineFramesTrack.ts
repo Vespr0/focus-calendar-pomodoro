@@ -11,17 +11,25 @@ export interface TimelineFrameCallbacks {
 
 export class TimelineFramesTrack {
   public static render(
-    canvas: HTMLElement, windows: TimeWindow[], entries: CalendarEntry[],
-    startDate: Date, rangeEndDate: Date, totalDays: number, dayWidthPx: number,
+    framesContainer: HTMLElement,
+    canvas: HTMLElement,
+    windows: TimeWindow[],
+    entries: CalendarEntry[],
+    startDate: Date,
+    rangeEndDate: Date,
+    totalDays: number,
+    dayWidthPx: number,
     cb: TimelineFrameCallbacks
   ): void {
-    const container = canvas.createDiv('fcp-timeline-frames-container');
-    const startIso = formatDateIso(startDate), endIso = formatDateIso(rangeEndDate);
+    framesContainer.empty();
+    const startIso = formatDateIso(startDate);
+    const endIso = formatDateIso(rangeEndDate);
+
     const visWins = windows.filter(w => w.startDate <= endIso && w.endDate >= startIso);
     const crucial = entries.filter(e => e.type === 'crucial' && e.date >= startIso && e.date <= endIso);
 
     if (visWins.length === 0 && crucial.length === 0) {
-      container.createDiv('fcp-timeline-empty-notice').textContent = 'No time windows or crucial events.';
+      framesContainer.createDiv('fcp-timeline-empty-notice').textContent = 'No time windows or crucial events. Use "+ ADD TIME WINDOW" to create one.';
       return;
     }
 
@@ -29,7 +37,7 @@ export class TimelineFramesTrack {
     const lanes = TimelineLanePacker.pack(visWins);
 
     lanes.forEach(lane => {
-      const laneEl = container.createDiv('fcp-timeline-frame-lane');
+      const laneEl = framesContainer.createDiv('fcp-timeline-frame-lane');
       lane.forEach(w => {
         this.renderFrame(laneEl, w, startDate, totalDays, cb);
         (assigned.get(w.id) || []).forEach(e => {
@@ -40,7 +48,7 @@ export class TimelineFramesTrack {
 
     const unassigned = crucial.filter(e => !e.windowId || e.windowId === 'none' || !windows.some(w => w.id === e.windowId));
     if (unassigned.length > 0) {
-      const lane = container.createDiv('fcp-timeline-frame-lane fcp-unassigned-lane');
+      const lane = framesContainer.createDiv('fcp-timeline-frame-lane fcp-unassigned-lane');
       lane.createDiv('fcp-frame-baseline');
       unassigned.forEach(e => {
         this.renderMarker(lane, e, eventToPercent(e.date, startDate, totalDays), windows, canvas, cb);
@@ -49,7 +57,10 @@ export class TimelineFramesTrack {
   }
 
   private static renderFrame(
-    laneEl: HTMLElement, w: TimeWindow, startDate: Date, totalDays: number,
+    laneEl: HTMLElement,
+    w: TimeWindow,
+    startDate: Date,
+    totalDays: number,
     cb: TimelineFrameCallbacks
   ): void {
     const { leftPct, widthPct } = windowRangeToPercent(w.startDate, w.endDate, startDate, totalDays);
@@ -67,8 +78,11 @@ export class TimelineFramesTrack {
   }
 
   private static renderMarker(
-    parent: HTMLElement, e: CalendarEntry, left: number,
-    windows: TimeWindow[], canvas: HTMLElement,
+    parent: HTMLElement,
+    e: CalendarEntry,
+    left: number,
+    windows: TimeWindow[],
+    canvas: HTMLElement,
     cb: TimelineFrameCallbacks
   ): void {
     const el = parent.createDiv('fcp-timeline-rhombus');

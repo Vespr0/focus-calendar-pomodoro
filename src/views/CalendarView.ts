@@ -61,12 +61,16 @@ export class FocusCalendarView extends ItemView {
     const monthsToLoad = new Set<string>();
 
     if (this.viewMode === 'timeline') {
-      // In timeline view, load a 9-month window to cover academic planning
-      const start = new Date(year, month - 1, 1);
-      for (let i = 0; i < 9; i++) {
+      // In timeline view, load baseline range around current date plus active window months
+      const start = new Date(year, month - 6, 1);
+      for (let i = 0; i < 24; i++) {
         const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
         monthsToLoad.add(this.getYearMonthString(d));
       }
+      this.windows.forEach(w => {
+        if (w.startDate) monthsToLoad.add(w.startDate.substring(0, 7));
+        if (w.endDate) monthsToLoad.add(w.endDate.substring(0, 7));
+      });
     } else {
       const prevMonthDate = new Date(year, month - 1, 1);
       const nextMonthDate = new Date(year, month + 1, 1);
@@ -102,9 +106,13 @@ export class FocusCalendarView extends ItemView {
     const leftNav = navBar.createDiv('fcp-nav-left');
     const todayBtn = leftNav.createEl('button', { cls: 'fcp-btn', text: 'TODAY' });
     todayBtn.onclick = async () => {
-      this.currentDate = new Date();
-      await this.refreshData();
-      this.renderView();
+      if (this.viewMode === 'timeline') {
+        this.timelineComponent?.scrollToToday(true);
+      } else {
+        this.currentDate = new Date();
+        await this.refreshData();
+        this.renderView();
+      }
     };
 
     const prevBtn = leftNav.createEl('button', { cls: 'fcp-icon-btn', ariaLabel: 'Previous' });
@@ -114,8 +122,6 @@ export class FocusCalendarView extends ItemView {
         this.currentDate.setDate(this.currentDate.getDate() - 7);
       } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
-      } else {
-        this.currentDate.setMonth(this.currentDate.getMonth() - 3);
       }
       await this.refreshData();
       this.renderView();
@@ -128,12 +134,16 @@ export class FocusCalendarView extends ItemView {
         this.currentDate.setDate(this.currentDate.getDate() + 7);
       } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
-      } else {
-        this.currentDate.setMonth(this.currentDate.getMonth() + 3);
       }
       await this.refreshData();
       this.renderView();
     };
+
+    // In timeline view, hide the section-jump arrows completely
+    if (this.viewMode === 'timeline') {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+    }
 
     const dateTitle = leftNav.createDiv('fcp-nav-date-title');
     if (this.viewMode === 'week') {
@@ -142,12 +152,7 @@ export class FocusCalendarView extends ItemView {
     } else if (this.viewMode === 'month') {
       dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
     } else {
-      const start = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 5);
-      const sM = start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
-      const eM = end.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase();
-      dateTitle.textContent = `TIMELINE (${sM} – ${eM})`;
+      dateTitle.textContent = 'TIMELINE';
     }
 
     const modeSwitch = navBar.createDiv('fcp-mode-switch');
@@ -312,6 +317,28 @@ export class FocusCalendarView extends ItemView {
           onStateChange: (zoom, scroll) => {
             this.timelineZoomPx = zoom;
             this.timelineScrollLeft = scroll;
+          },
+          onVisibleRangeChange: (rangeStr) => {
+            if (this.viewMode === 'timeline') {
+              dateTitle.textContent = rangeStr;
+            }
+          },
+          onRequireMonth: async (ym) => {
+            const monthEntries = await this.storage.loadEntriesForMonth(ym);
+            if (monthEntries.length > 0) {
+              const existingIds = new Set(this.entries.map(e => e.id));
+              let added = false;
+              for (const e of monthEntries) {
+                if (!existingIds.has(e.id)) {
+                  this.entries.push(e);
+                  added = true;
+                }
+              }
+              if (added) {
+                this.timelineComponent?.updateData(this.windows, this.entries);
+              }
+            }
+            return monthEntries;
           },
           onWindowClick: (window) => {
             new TimeWindowModal(

@@ -1236,6 +1236,18 @@ function windowRangeToPercent(start, end, startDate, totalDays) {
   const right = Math.max(0, Math.min(100, (diffDays(end, startDate) + 1) / totalDays * 100));
   return { leftPct: left, widthPct: Math.max(1, right - left) };
 }
+function formatShortDateRange(startStr, endStr) {
+  const s = /* @__PURE__ */ new Date(startStr + "T00:00:00");
+  const e = /* @__PURE__ */ new Date(endStr + "T00:00:00");
+  const sMonth = s.toLocaleDateString("en-US", { month: "short" });
+  const eMonth = e.toLocaleDateString("en-US", { month: "short" });
+  if (s.getFullYear() !== e.getFullYear()) {
+    return `${sMonth} ${s.getDate()}, ${s.getFullYear()} \u2013 ${eMonth} ${e.getDate()}, ${e.getFullYear()}`;
+  }
+  if (sMonth === eMonth)
+    return `${sMonth} ${s.getDate()}\u2013${e.getDate()}`;
+  return `${sMonth} ${s.getDate()} \u2013 ${eMonth} ${e.getDate()}`;
+}
 function formatDateIso(d) {
   const y = d.getFullYear();
   const m = (d.getMonth() + 1).toString().padStart(2, "0");
@@ -1247,69 +1259,181 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
-
-// src/views/timeline/TimelineRuler.ts
-var TimelineRuler = class {
-  static render(canvas, startDate, monthsSpan, totalDays, rangeEndDate, dayWidthPx = 14) {
-    const showDays = dayWidthPx >= 18;
-    this.renderHeader(canvas, startDate, monthsSpan, totalDays, showDays);
-    this.renderGrid(canvas, startDate, monthsSpan, totalDays, showDays);
-    this.renderTodayMarker(canvas, startDate, rangeEndDate, totalDays);
+function pxToDate(px, startDate, dayWidthPx) {
+  const dayOffset = Math.max(0, Math.floor(px / dayWidthPx));
+  const d = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + dayOffset);
+  return formatDateIso(d);
+}
+function getVisibleYearMonths(startPx, endPx, startDate, dayWidthPx) {
+  const startDayOffset = Math.max(0, Math.floor(startPx / dayWidthPx));
+  const endDayOffset = Math.max(0, Math.ceil(endPx / dayWidthPx));
+  const startD = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + startDayOffset);
+  const endD = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + endDayOffset);
+  const months = [];
+  const cur = new Date(startD.getFullYear(), startD.getMonth(), 1);
+  const end = new Date(endD.getFullYear(), endD.getMonth(), 1);
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = (cur.getMonth() + 1).toString().padStart(2, "0");
+    months.push(`${y}-${m}`);
+    cur.setMonth(cur.getMonth() + 1);
   }
-  static renderHeader(canvas, startDate, monthsSpan, totalDays, showDays) {
-    const headerEl = canvas.createDiv("fcp-timeline-header-ruler");
-    const monthsRow = headerEl.createDiv("fcp-timeline-months-row");
-    const cur = new Date(startDate);
-    for (let m = 0; m < monthsSpan; m++) {
-      const days = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
-      const col = monthsRow.createDiv("fcp-timeline-month-col");
-      col.style.width = `${days / totalDays * 100}%`;
-      const name = cur.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
-      col.innerHTML = `<span class="fcp-ruler-month-label">${name}</span><span class="fcp-ruler-month-days">${days}d</span>`;
-      cur.setMonth(cur.getMonth() + 1);
-    }
-    if (showDays) {
-      const daysRow = headerEl.createDiv("fcp-timeline-days-row");
-      const dCur = new Date(startDate);
-      for (let m = 0; m < monthsSpan; m++) {
-        const days = new Date(dCur.getFullYear(), dCur.getMonth() + 1, 0).getDate();
-        for (let d = 1; d <= days; d++) {
-          const cell = daysRow.createDiv("fcp-ruler-day-col");
-          cell.style.width = `${1 / totalDays * 100}%`;
-          cell.textContent = d.toString();
+  return months;
+}
+function determineHorizon(windows = [], entries = [], refDate = /* @__PURE__ */ new Date()) {
+  let startYear = refDate.getFullYear();
+  let startMonth = refDate.getMonth() - 12;
+  let endYear = refDate.getFullYear();
+  let endMonth = refDate.getMonth() + 36;
+  for (const w of windows) {
+    if (w.startDate) {
+      const parts = w.startDate.split("-").map(Number);
+      if (parts.length >= 2) {
+        const wStartMonthIndex = parts[0] * 12 + (parts[1] - 1);
+        const currentStartMonthIndex = startYear * 12 + startMonth;
+        if (wStartMonthIndex < currentStartMonthIndex) {
+          startYear = parts[0];
+          startMonth = parts[1] - 2;
         }
-        dCur.setMonth(dCur.getMonth() + 1);
+      }
+    }
+    if (w.endDate) {
+      const parts = w.endDate.split("-").map(Number);
+      if (parts.length >= 2) {
+        const wEndMonthIndex = parts[0] * 12 + (parts[1] - 1);
+        const currentEndMonthIndex = endYear * 12 + endMonth;
+        if (wEndMonthIndex > currentEndMonthIndex) {
+          endYear = parts[0];
+          endMonth = parts[1] + 2;
+        }
       }
     }
   }
-  static renderGrid(canvas, startDate, monthsSpan, totalDays, showDays) {
-    const overlay = canvas.createDiv("fcp-timeline-grid-overlay");
-    const cur = new Date(startDate);
-    const monthEnds = /* @__PURE__ */ new Set();
-    let acc = 0;
-    for (let m = 0; m < monthsSpan; m++) {
-      acc += new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
-      monthEnds.add(acc);
-      cur.setMonth(cur.getMonth() + 1);
-    }
-    if (!showDays) {
-      monthEnds.forEach((d) => {
-        overlay.createDiv("fcp-timeline-grid-line").style.left = `${d / totalDays * 100}%`;
-      });
-      return;
-    }
-    for (let d = 1; d <= totalDays; d++) {
-      const cls = monthEnds.has(d) ? "fcp-timeline-grid-line is-month" : "fcp-timeline-grid-line is-day";
-      overlay.createDiv(cls).style.left = `${d / totalDays * 100}%`;
+  for (const e of entries) {
+    if (e.date) {
+      const parts = e.date.split("-").map(Number);
+      if (parts.length >= 2) {
+        const eMonthIndex = parts[0] * 12 + (parts[1] - 1);
+        const currentStartMonthIndex = startYear * 12 + startMonth;
+        if (eMonthIndex < currentStartMonthIndex) {
+          startYear = parts[0];
+          startMonth = parts[1] - 2;
+        }
+        const currentEndMonthIndex = endYear * 12 + endMonth;
+        if (eMonthIndex > currentEndMonthIndex) {
+          endYear = parts[0];
+          endMonth = parts[1] + 2;
+        }
+      }
     }
   }
-  static renderTodayMarker(canvas, startDate, rangeEndDate, totalDays) {
-    const todayIso = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
-    if (todayIso >= formatDateIso(startDate) && todayIso <= formatDateIso(rangeEndDate)) {
-      const marker = canvas.createDiv("fcp-timeline-today-marker");
-      marker.style.left = `${dateToPercent(todayIso, startDate, totalDays)}%`;
-      marker.createDiv("fcp-timeline-today-badge").textContent = "TODAY";
+  const startDate = new Date(startYear, startMonth, 1);
+  const endTargetDate = new Date(endYear, endMonth, 1);
+  let monthsSpan = (endTargetDate.getFullYear() - startDate.getFullYear()) * 12 + (endTargetDate.getMonth() - startDate.getMonth()) + 1;
+  if (monthsSpan < 48)
+    monthsSpan = 48;
+  const totalDays = calculateTotalDays(startDate, monthsSpan);
+  const rangeEndDate = calculateEndDate(startDate, monthsSpan);
+  return { startDate, monthsSpan, totalDays, rangeEndDate };
+}
+
+// src/views/timeline/TimelineRuler.ts
+var TimelineRuler = class {
+  constructor(canvas, startDate, monthsSpan, totalDays, rangeEndDate) {
+    this.canvas = canvas;
+    this.todayMarker = null;
+    this.monthBoundaryOffsets = /* @__PURE__ */ new Set();
+    this.lastRenderedDayKey = "";
+    this.init(startDate, monthsSpan, totalDays, rangeEndDate);
+  }
+  init(startDate, monthsSpan, totalDays, rangeEndDate) {
+    this.startDate = startDate;
+    this.monthsSpan = monthsSpan;
+    this.totalDays = totalDays;
+    this.rangeEndDate = rangeEndDate;
+    this.lastRenderedDayKey = "";
+    this.buildStaticElements();
+  }
+  buildStaticElements() {
+    this.canvas.querySelectorAll(".fcp-timeline-header-ruler, .fcp-timeline-grid-overlay, .fcp-timeline-today-marker").forEach((el) => el.remove());
+    this.headerEl = this.canvas.createDiv("fcp-timeline-header-ruler");
+    this.monthsRow = this.headerEl.createDiv("fcp-timeline-months-row");
+    this.daysRow = this.headerEl.createDiv("fcp-timeline-days-row");
+    this.overlay = this.canvas.createDiv("fcp-timeline-grid-overlay");
+    this.monthGridContainer = this.overlay.createDiv("fcp-month-grid-container");
+    this.dayGridContainer = this.overlay.createDiv("fcp-day-grid-container");
+    const cur = new Date(this.startDate);
+    this.monthBoundaryOffsets.clear();
+    let accDays = 0;
+    for (let m = 0; m < this.monthsSpan; m++) {
+      const days = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+      const col = this.monthsRow.createDiv("fcp-timeline-month-col");
+      col.style.width = `${days / this.totalDays * 100}%`;
+      const name = cur.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
+      col.innerHTML = `<span class="fcp-ruler-month-label">${name}</span><span class="fcp-ruler-month-days">${days}d</span>`;
+      accDays += days;
+      this.monthBoundaryOffsets.add(accDays);
+      const monthLine = this.monthGridContainer.createDiv("fcp-timeline-grid-line is-month");
+      monthLine.style.left = `${accDays / this.totalDays * 100}%`;
+      cur.setMonth(cur.getMonth() + 1);
     }
+    this.renderTodayMarker();
+  }
+  renderTodayMarker() {
+    const todayIso = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    const startIso = formatDateIso(this.startDate);
+    const endIso = formatDateIso(this.rangeEndDate);
+    if (todayIso >= startIso && todayIso <= endIso) {
+      const pct = dateToPercent(todayIso, this.startDate, this.totalDays);
+      this.todayMarker = this.canvas.createDiv("fcp-timeline-today-marker");
+      this.todayMarker.style.left = `${pct}%`;
+      this.todayMarker.createDiv("fcp-timeline-today-badge").textContent = "TODAY";
+    }
+  }
+  updateVisibleDays(scrollLeft, clientWidth, dayWidthPx) {
+    const showDays = dayWidthPx >= 18;
+    if (!showDays) {
+      if (this.lastRenderedDayKey !== "hidden") {
+        this.daysRow.empty();
+        this.daysRow.style.display = "none";
+        this.dayGridContainer.empty();
+        this.lastRenderedDayKey = "hidden";
+      }
+      return;
+    }
+    this.daysRow.style.display = "block";
+    const bufferPx = Math.max(300, clientWidth * 0.5);
+    const startPx = Math.max(0, scrollLeft - bufferPx);
+    const endPx = scrollLeft + clientWidth + bufferPx;
+    const startDay = Math.max(0, Math.floor(startPx / dayWidthPx));
+    const endDay = Math.min(this.totalDays, Math.ceil(endPx / dayWidthPx));
+    const key = `${startDay}_${endDay}_${dayWidthPx >= 28 ? "large" : "small"}`;
+    if (key === this.lastRenderedDayKey) {
+      return;
+    }
+    this.lastRenderedDayKey = key;
+    this.daysRow.empty();
+    this.dayGridContainer.empty();
+    const daysFragment = document.createDocumentFragment();
+    const gridFragment = document.createDocumentFragment();
+    for (let d = startDay; d < endDay; d++) {
+      const dDate = new Date(this.startDate.getFullYear(), this.startDate.getMonth(), 1 + d);
+      const dayNum = dDate.getDate();
+      const cell = document.createElement("div");
+      cell.className = "fcp-ruler-day-col";
+      cell.style.left = `${d / this.totalDays * 100}%`;
+      cell.style.width = `${1 / this.totalDays * 100}%`;
+      cell.textContent = dayNum.toString();
+      daysFragment.appendChild(cell);
+      if (!this.monthBoundaryOffsets.has(d + 1)) {
+        const line = document.createElement("div");
+        line.className = "fcp-timeline-grid-line is-day";
+        line.style.left = `${(d + 1) / this.totalDays * 100}%`;
+        gridFragment.appendChild(line);
+      }
+    }
+    this.daysRow.appendChild(daysFragment);
+    this.dayGridContainer.appendChild(gridFragment);
   }
 };
 
@@ -1415,19 +1539,20 @@ var TimelineMarkerDrag = class {
 
 // src/views/timeline/TimelineFramesTrack.ts
 var TimelineFramesTrack = class {
-  static render(canvas, windows, entries, startDate, rangeEndDate, totalDays, dayWidthPx, cb) {
-    const container = canvas.createDiv("fcp-timeline-frames-container");
-    const startIso = formatDateIso(startDate), endIso = formatDateIso(rangeEndDate);
+  static render(framesContainer, canvas, windows, entries, startDate, rangeEndDate, totalDays, dayWidthPx, cb) {
+    framesContainer.empty();
+    const startIso = formatDateIso(startDate);
+    const endIso = formatDateIso(rangeEndDate);
     const visWins = windows.filter((w) => w.startDate <= endIso && w.endDate >= startIso);
     const crucial = entries.filter((e) => e.type === "crucial" && e.date >= startIso && e.date <= endIso);
     if (visWins.length === 0 && crucial.length === 0) {
-      container.createDiv("fcp-timeline-empty-notice").textContent = "No time windows or crucial events.";
+      framesContainer.createDiv("fcp-timeline-empty-notice").textContent = 'No time windows or crucial events. Use "+ ADD TIME WINDOW" to create one.';
       return;
     }
     const assigned = TimelineLanePacker.mapEventsToWindows(crucial, visWins);
     const lanes = TimelineLanePacker.pack(visWins);
     lanes.forEach((lane) => {
-      const laneEl = container.createDiv("fcp-timeline-frame-lane");
+      const laneEl = framesContainer.createDiv("fcp-timeline-frame-lane");
       lane.forEach((w) => {
         this.renderFrame(laneEl, w, startDate, totalDays, cb);
         (assigned.get(w.id) || []).forEach((e) => {
@@ -1437,7 +1562,7 @@ var TimelineFramesTrack = class {
     });
     const unassigned = crucial.filter((e) => !e.windowId || e.windowId === "none" || !windows.some((w) => w.id === e.windowId));
     if (unassigned.length > 0) {
-      const lane = container.createDiv("fcp-timeline-frame-lane fcp-unassigned-lane");
+      const lane = framesContainer.createDiv("fcp-timeline-frame-lane fcp-unassigned-lane");
       lane.createDiv("fcp-frame-baseline");
       unassigned.forEach((e) => {
         this.renderMarker(lane, e, eventToPercent(e.date, startDate, totalDays), windows, canvas, cb);
@@ -1472,13 +1597,37 @@ ${e.date}${e.startTime ? " " + e.startTime : ""}`;
 
 // src/views/timeline/TimelineControls.ts
 var TimelineControls = class {
-  static render(parentEl, onAddWindow) {
+  static render(parentEl, onAddWindow, onZoomIn, onZoomOut, onScrollToday) {
     const controlsBar = parentEl.createDiv("fcp-timeline-controls");
-    const addWindowBtn = controlsBar.createEl("button", {
+    const leftSide = controlsBar.createDiv("fcp-timeline-controls-left");
+    const addWindowBtn = leftSide.createEl("button", {
       cls: "fcp-btn fcp-btn-primary",
       text: "+ ADD TIME WINDOW"
     });
     addWindowBtn.onclick = () => onAddWindow();
+    const rightSide = controlsBar.createDiv("fcp-timeline-controls-right");
+    if (onScrollToday) {
+      const todayBtn = rightSide.createEl("button", {
+        cls: "fcp-btn fcp-btn-sm",
+        text: "TODAY"
+      });
+      todayBtn.title = "Center timeline on today";
+      todayBtn.onclick = () => onScrollToday();
+    }
+    if (onZoomOut && onZoomIn) {
+      const zoomOutBtn = rightSide.createEl("button", {
+        cls: "fcp-icon-btn fcp-btn-sm",
+        ariaLabel: "Zoom out (Ctrl + Wheel)"
+      });
+      zoomOutBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+      zoomOutBtn.onclick = () => onZoomOut();
+      const zoomInBtn = rightSide.createEl("button", {
+        cls: "fcp-icon-btn fcp-btn-sm",
+        ariaLabel: "Zoom in (Ctrl + Wheel)"
+      });
+      zoomInBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+      zoomInBtn.onclick = () => onZoomIn();
+    }
     return controlsBar;
   }
   static attachWheelZoom(scrollContainer, getDayWidth, getCanvasWidth, onZoomChange) {
@@ -1487,92 +1636,257 @@ var TimelineControls = class {
         e.preventDefault();
         e.stopPropagation();
         const currentWidth = getDayWidth();
-        const factor = e.deltaY < 0 ? 1.15 : 0.87;
-        const newWidth = Math.max(4, Math.min(60, currentWidth * factor));
-        if (Math.abs(newWidth - currentWidth) > 0.05) {
+        let factor = 1;
+        if (Math.abs(e.deltaY) > 40) {
+          factor = e.deltaY < 0 ? 1.2 : 0.83;
+        } else {
+          factor = Math.exp(-e.deltaY * 0.01);
+        }
+        const newWidth = Math.max(4, Math.min(80, Math.round(currentWidth * factor * 10) / 10));
+        if (Math.abs(newWidth - currentWidth) >= 0.05) {
           const rect = scrollContainer.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
+          const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
           const contentX = scrollContainer.scrollLeft + mouseX;
           const ratio = contentX / getCanvasWidth();
           onZoomChange(newWidth, ratio, mouseX);
         }
+      } else if (!e.shiftKey) {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          scrollContainer.scrollLeft += e.deltaY;
+        }
       }
     }, { passive: false });
+  }
+  static attachPanGestures(scrollContainer) {
+    let isPanning = false;
+    let startX = 0;
+    let startScrollLeft = 0;
+    scrollContainer.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 && e.button !== 1)
+        return;
+      const target = e.target;
+      if ((target == null ? void 0 : target.closest(".fcp-timeline-window-frame")) || (target == null ? void 0 : target.closest(".fcp-timeline-rhombus")) || (target == null ? void 0 : target.closest(".fcp-timeline-task-dot")) || (target == null ? void 0 : target.closest("button")) || (target == null ? void 0 : target.closest("input"))) {
+        return;
+      }
+      isPanning = true;
+      startX = e.clientX;
+      startScrollLeft = scrollContainer.scrollLeft;
+      scrollContainer.addClass("is-panning");
+      const onMouseMove = (moveEv) => {
+        if (!isPanning)
+          return;
+        const dx = moveEv.clientX - startX;
+        scrollContainer.scrollLeft = startScrollLeft - dx;
+      };
+      const onMouseUp = () => {
+        isPanning = false;
+        scrollContainer.removeClass("is-panning");
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
   }
 };
 
 // src/views/TimelineViewRender.ts
 var TimelineViewRenderComponent = class {
-  constructor(app, containerEl, startDate, windows, entries, callbacks) {
+  constructor(app, containerEl, refDate, windows, entries, callbacks) {
     this.app = app;
     this.containerEl = containerEl;
     this.windows = windows;
     this.entries = entries;
     this.callbacks = callbacks;
-    this.monthsSpan = 9;
     this.dayWidthPx = 16;
-    this.canvasWidthPx = 1400;
-    this.startDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
-    if (callbacks.initialDayWidthPx)
+    this.canvasWidthPx = 2e3;
+    this.scrollRafId = null;
+    this.loadedMonths = /* @__PURE__ */ new Set();
+    if (callbacks.initialDayWidthPx) {
       this.dayWidthPx = callbacks.initialDayWidthPx;
+    }
+    this.initHorizon(refDate);
     this.buildBase();
     this.renderContent();
     this.initScroll(callbacks.initialScrollLeft);
   }
+  initHorizon(refDate) {
+    const horizon = determineHorizon(this.windows, this.entries, refDate);
+    this.startDate = horizon.startDate;
+    this.monthsSpan = horizon.monthsSpan;
+    this.totalDays = horizon.totalDays;
+    this.rangeEndDate = horizon.rangeEndDate;
+    this.canvasWidthPx = Math.max(1200, Math.round(this.totalDays * this.dayWidthPx));
+  }
   updateData(windows, entries) {
     this.windows = windows;
     this.entries = entries;
-    this.renderContent();
+    const currentStartIso = formatDateIso(this.startDate);
+    const currentEndIso = formatDateIso(this.rangeEndDate);
+    const needsExpansion = windows.some((w) => w.startDate < currentStartIso || w.endDate > currentEndIso) || entries.some((e) => e.date < currentStartIso || e.date > currentEndIso);
+    if (needsExpansion) {
+      const savedScroll = this.scrollContainer.scrollLeft;
+      const oldStartDate = new Date(this.startDate);
+      this.initHorizon(/* @__PURE__ */ new Date());
+      this.canvasWidthPx = Math.max(1200, Math.round(this.totalDays * this.dayWidthPx));
+      this.canvas.style.minWidth = `${this.canvasWidthPx}px`;
+      this.ruler.init(this.startDate, this.monthsSpan, this.totalDays, this.rangeEndDate);
+      const dayShift = diffDays(formatDateIso(oldStartDate), this.startDate);
+      if (dayShift !== 0) {
+        this.scrollContainer.scrollLeft = savedScroll + dayShift * this.dayWidthPx;
+      }
+    }
+    TimelineFramesTrack.render(
+      this.framesContainer,
+      this.canvas,
+      this.windows,
+      this.entries,
+      this.startDate,
+      this.rangeEndDate,
+      this.totalDays,
+      this.dayWidthPx,
+      {
+        onWindowClick: this.callbacks.onWindowClick,
+        onEntryClick: this.callbacks.onEntryClick,
+        onEntryUpdate: (entry) => this.callbacks.onEntryUpdate(entry)
+      }
+    );
+    this.ruler.updateVisibleDays(this.scrollContainer.scrollLeft, this.scrollContainer.clientWidth, this.dayWidthPx);
   }
   buildBase() {
     this.containerEl.empty();
     this.containerEl.addClass("fcp-timeline-view-wrapper");
-    TimelineControls.render(this.containerEl, () => this.callbacks.onWindowCreate());
+    TimelineControls.render(
+      this.containerEl,
+      () => this.callbacks.onWindowCreate(),
+      () => this.zoomRelative(1.25),
+      () => this.zoomRelative(0.8),
+      () => this.scrollToToday(true)
+    );
     this.scrollContainer = this.containerEl.createDiv("fcp-timeline-scroll-container");
     this.canvas = this.scrollContainer.createDiv("fcp-timeline-canvas");
+    this.canvas.style.minWidth = `${this.canvasWidthPx}px`;
+    this.ruler = new TimelineRuler(this.canvas, this.startDate, this.monthsSpan, this.totalDays, this.rangeEndDate);
+    this.framesContainer = this.canvas.createDiv("fcp-timeline-frames-container");
     this.scrollContainer.addEventListener("scroll", () => {
-      var _a, _b;
-      (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, this.scrollContainer.scrollLeft);
-    });
+      if (this.scrollRafId !== null)
+        cancelAnimationFrame(this.scrollRafId);
+      this.scrollRafId = requestAnimationFrame(() => {
+        this.onScrollUpdate();
+      });
+    }, { passive: true });
     TimelineControls.attachWheelZoom(
       this.scrollContainer,
       () => this.dayWidthPx,
       () => this.canvasWidthPx,
       (newWidth, ratio, mouseX) => {
-        var _a, _b;
-        this.dayWidthPx = newWidth;
-        this.renderContent();
-        this.scrollContainer.scrollLeft = ratio * this.canvasWidthPx - mouseX;
-        (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, this.scrollContainer.scrollLeft);
+        this.applyZoom(newWidth, ratio, mouseX);
       }
     );
+    TimelineControls.attachPanGestures(this.scrollContainer);
+  }
+  onScrollUpdate() {
+    var _a, _b;
+    const scrollLeft = this.scrollContainer.scrollLeft;
+    const clientWidth = this.scrollContainer.clientWidth;
+    this.ruler.updateVisibleDays(scrollLeft, clientWidth, this.dayWidthPx);
+    this.updateVisibleRangeHeader();
+    if (this.callbacks.onRequireMonth) {
+      const buffer = clientWidth * 1.5;
+      const startPx = Math.max(0, scrollLeft - buffer);
+      const endPx = scrollLeft + clientWidth + buffer;
+      const visibleYMs = getVisibleYearMonths(startPx, endPx, this.startDate, this.dayWidthPx);
+      for (const ym of visibleYMs) {
+        if (!this.loadedMonths.has(ym)) {
+          this.loadedMonths.add(ym);
+          this.callbacks.onRequireMonth(ym).catch((err) => {
+            console.error(`Failed to lazy load month ${ym}:`, err);
+          });
+        }
+      }
+    }
+    (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, scrollLeft);
+  }
+  updateVisibleRangeHeader() {
+    var _a, _b;
+    const scrollLeft = this.scrollContainer.scrollLeft;
+    const clientWidth = this.scrollContainer.clientWidth;
+    const startIso = pxToDate(scrollLeft, this.startDate, this.dayWidthPx);
+    const endIso = pxToDate(scrollLeft + clientWidth, this.startDate, this.dayWidthPx);
+    const rangeText = `TIMELINE (${formatShortDateRange(startIso, endIso).toUpperCase()})`;
+    (_b = (_a = this.callbacks).onVisibleRangeChange) == null ? void 0 : _b.call(_a, rangeText);
+  }
+  applyZoom(newWidth, ratio, mouseX) {
+    var _a, _b;
+    this.dayWidthPx = newWidth;
+    this.canvasWidthPx = Math.max(1200, Math.round(this.totalDays * this.dayWidthPx));
+    this.canvas.style.minWidth = `${this.canvasWidthPx}px`;
+    const newScrollLeft = Math.max(0, ratio * this.canvasWidthPx - mouseX);
+    this.scrollContainer.scrollLeft = newScrollLeft;
+    this.ruler.updateVisibleDays(newScrollLeft, this.scrollContainer.clientWidth, this.dayWidthPx);
+    this.updateVisibleRangeHeader();
+    (_b = (_a = this.callbacks).onStateChange) == null ? void 0 : _b.call(_a, this.dayWidthPx, newScrollLeft);
+  }
+  zoomRelative(factor) {
+    const currentWidth = this.dayWidthPx;
+    const newWidth = Math.max(4, Math.min(80, Math.round(currentWidth * factor * 10) / 10));
+    if (Math.abs(newWidth - currentWidth) < 0.1)
+      return;
+    const rect = this.scrollContainer.getBoundingClientRect();
+    const mouseX = rect.width / 2;
+    const contentX = this.scrollContainer.scrollLeft + mouseX;
+    const ratio = contentX / this.canvasWidthPx;
+    this.applyZoom(newWidth, ratio, mouseX);
+  }
+  scrollToToday(smooth = true) {
+    const todayIso = formatDateIso(/* @__PURE__ */ new Date());
+    const todayDiff = diffDays(todayIso, this.startDate);
+    const todayPx = todayDiff * this.dayWidthPx;
+    const targetScroll = Math.max(0, todayPx - this.scrollContainer.clientWidth / 2);
+    this.scrollContainer.scrollTo({
+      left: targetScroll,
+      behavior: smooth ? "smooth" : "auto"
+    });
+  }
+  scrollToDate(dateIso, smooth = true) {
+    const diff = diffDays(dateIso, this.startDate);
+    const targetPx = diff * this.dayWidthPx;
+    const targetScroll = Math.max(0, targetPx - this.scrollContainer.clientWidth / 2);
+    this.scrollContainer.scrollTo({
+      left: targetScroll,
+      behavior: smooth ? "smooth" : "auto"
+    });
   }
   renderContent() {
-    var _a, _b;
-    const savedScroll = (_b = (_a = this.scrollContainer) == null ? void 0 : _a.scrollLeft) != null ? _b : 0;
-    const totalDays = calculateTotalDays(this.startDate, this.monthsSpan);
-    const rangeEndDate = calculateEndDate(this.startDate, this.monthsSpan);
-    this.canvasWidthPx = Math.max(1e3, Math.round(totalDays * this.dayWidthPx));
+    var _a, _b, _c, _d;
     this.canvas.style.minWidth = `${this.canvasWidthPx}px`;
-    this.canvas.empty();
-    TimelineRuler.render(this.canvas, this.startDate, this.monthsSpan, totalDays, rangeEndDate, this.dayWidthPx);
-    TimelineFramesTrack.render(this.canvas, this.windows, this.entries, this.startDate, rangeEndDate, totalDays, this.dayWidthPx, {
-      onWindowClick: this.callbacks.onWindowClick,
-      onEntryClick: this.callbacks.onEntryClick,
-      onEntryUpdate: (entry) => this.callbacks.onEntryUpdate(entry)
-    });
-    if (savedScroll > 0)
-      this.scrollContainer.scrollLeft = savedScroll;
+    TimelineFramesTrack.render(
+      this.framesContainer,
+      this.canvas,
+      this.windows,
+      this.entries,
+      this.startDate,
+      this.rangeEndDate,
+      this.totalDays,
+      this.dayWidthPx,
+      {
+        onWindowClick: this.callbacks.onWindowClick,
+        onEntryClick: this.callbacks.onEntryClick,
+        onEntryUpdate: (entry) => this.callbacks.onEntryUpdate(entry)
+      }
+    );
+    const scrollLeft = (_b = (_a = this.scrollContainer) == null ? void 0 : _a.scrollLeft) != null ? _b : 0;
+    const clientWidth = (_d = (_c = this.scrollContainer) == null ? void 0 : _c.clientWidth) != null ? _d : 1200;
+    this.ruler.updateVisibleDays(scrollLeft, clientWidth, this.dayWidthPx);
   }
   initScroll(initialScroll) {
     if (initialScroll !== void 0 && initialScroll >= 0) {
       this.scrollContainer.scrollLeft = initialScroll;
-      return;
+    } else {
+      this.scrollToToday(false);
     }
-    const totalDays = calculateTotalDays(this.startDate, this.monthsSpan);
-    const todayDiff = diffDays(formatDateIso(/* @__PURE__ */ new Date()), this.startDate);
-    const todayPx = todayDiff / totalDays * this.canvasWidthPx;
-    this.scrollContainer.scrollLeft = Math.max(0, todayPx - this.scrollContainer.clientWidth / 2);
+    this.onScrollUpdate();
   }
 };
 
@@ -1714,11 +2028,17 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     this.windows = await this.storage.loadTimeWindows();
     const monthsToLoad = /* @__PURE__ */ new Set();
     if (this.viewMode === "timeline") {
-      const start = new Date(year, month - 1, 1);
-      for (let i = 0; i < 9; i++) {
+      const start = new Date(year, month - 6, 1);
+      for (let i = 0; i < 24; i++) {
         const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
         monthsToLoad.add(this.getYearMonthString(d));
       }
+      this.windows.forEach((w) => {
+        if (w.startDate)
+          monthsToLoad.add(w.startDate.substring(0, 7));
+        if (w.endDate)
+          monthsToLoad.add(w.endDate.substring(0, 7));
+      });
     } else {
       const prevMonthDate = new Date(year, month - 1, 1);
       const nextMonthDate = new Date(year, month + 1, 1);
@@ -1747,9 +2067,14 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     const leftNav = navBar.createDiv("fcp-nav-left");
     const todayBtn = leftNav.createEl("button", { cls: "fcp-btn", text: "TODAY" });
     todayBtn.onclick = async () => {
-      this.currentDate = /* @__PURE__ */ new Date();
-      await this.refreshData();
-      this.renderView();
+      var _a;
+      if (this.viewMode === "timeline") {
+        (_a = this.timelineComponent) == null ? void 0 : _a.scrollToToday(true);
+      } else {
+        this.currentDate = /* @__PURE__ */ new Date();
+        await this.refreshData();
+        this.renderView();
+      }
     };
     const prevBtn = leftNav.createEl("button", { cls: "fcp-icon-btn", ariaLabel: "Previous" });
     prevBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
@@ -1758,8 +2083,6 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
         this.currentDate.setDate(this.currentDate.getDate() - 7);
       } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
-      } else {
-        this.currentDate.setMonth(this.currentDate.getMonth() - 3);
       }
       await this.refreshData();
       this.renderView();
@@ -1771,12 +2094,14 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
         this.currentDate.setDate(this.currentDate.getDate() + 7);
       } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
-      } else {
-        this.currentDate.setMonth(this.currentDate.getMonth() + 3);
       }
       await this.refreshData();
       this.renderView();
     };
+    if (this.viewMode === "timeline") {
+      prevBtn.style.display = "none";
+      nextBtn.style.display = "none";
+    }
     const dateTitle = leftNav.createDiv("fcp-nav-date-title");
     if (this.viewMode === "week") {
       const { week, year } = this.getWeekNumberAndYear(this.currentDate);
@@ -1784,12 +2109,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     } else if (this.viewMode === "month") {
       dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
     } else {
-      const start = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 5);
-      const sM = start.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
-      const eM = end.toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase();
-      dateTitle.textContent = `TIMELINE (${sM} \u2013 ${eM})`;
+      dateTitle.textContent = "TIMELINE";
     }
     const modeSwitch = navBar.createDiv("fcp-mode-switch");
     const weekBtn = modeSwitch.createEl("button", {
@@ -1957,6 +2277,29 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
           onStateChange: (zoom, scroll) => {
             this.timelineZoomPx = zoom;
             this.timelineScrollLeft = scroll;
+          },
+          onVisibleRangeChange: (rangeStr) => {
+            if (this.viewMode === "timeline") {
+              dateTitle.textContent = rangeStr;
+            }
+          },
+          onRequireMonth: async (ym) => {
+            var _a;
+            const monthEntries = await this.storage.loadEntriesForMonth(ym);
+            if (monthEntries.length > 0) {
+              const existingIds = new Set(this.entries.map((e) => e.id));
+              let added = false;
+              for (const e of monthEntries) {
+                if (!existingIds.has(e.id)) {
+                  this.entries.push(e);
+                  added = true;
+                }
+              }
+              if (added) {
+                (_a = this.timelineComponent) == null ? void 0 : _a.updateData(this.windows, this.entries);
+              }
+            }
+            return monthEntries;
           },
           onWindowClick: (window2) => {
             new TimeWindowModal(

@@ -66,3 +66,111 @@ export function percentToDate(pct: number, startDate: Date, totalDays: number): 
   return formatDateIso(d);
 }
 
+export function pxToDate(px: number, startDate: Date, dayWidthPx: number): string {
+  const dayOffset = Math.max(0, Math.floor(px / dayWidthPx));
+  const d = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + dayOffset);
+  return formatDateIso(d);
+}
+
+export function dateToPx(dateStr: string, startDate: Date, dayWidthPx: number): number {
+  return diffDays(dateStr, startDate) * dayWidthPx;
+}
+
+export function getVisibleYearMonths(startPx: number, endPx: number, startDate: Date, dayWidthPx: number): string[] {
+  const startDayOffset = Math.max(0, Math.floor(startPx / dayWidthPx));
+  const endDayOffset = Math.max(0, Math.ceil(endPx / dayWidthPx));
+
+  const startD = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + startDayOffset);
+  const endD = new Date(startDate.getFullYear(), startDate.getMonth(), 1 + endDayOffset);
+
+  const months: string[] = [];
+  const cur = new Date(startD.getFullYear(), startD.getMonth(), 1);
+  const end = new Date(endD.getFullYear(), endD.getMonth(), 1);
+
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = (cur.getMonth() + 1).toString().padStart(2, '0');
+    months.push(`${y}-${m}`);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return months;
+}
+
+export interface TimelineHorizon {
+  startDate: Date;
+  monthsSpan: number;
+  totalDays: number;
+  rangeEndDate: Date;
+}
+
+export function determineHorizon(
+  windows: { startDate: string; endDate: string }[] = [],
+  entries: { date: string }[] = [],
+  refDate: Date = new Date()
+): TimelineHorizon {
+  // Base range: 12 months before refDate, 36 months after refDate
+  let startYear = refDate.getFullYear();
+  let startMonth = refDate.getMonth() - 12; // 1 year prior
+
+  let endYear = refDate.getFullYear();
+  let endMonth = refDate.getMonth() + 36; // 3 years forward
+
+  // Check windows to expand horizon if user has earlier/later dates
+  for (const w of windows) {
+    if (w.startDate) {
+      const parts = w.startDate.split('-').map(Number);
+      if (parts.length >= 2) {
+        const wStartMonthIndex = (parts[0] * 12) + (parts[1] - 1);
+        const currentStartMonthIndex = (startYear * 12) + startMonth;
+        if (wStartMonthIndex < currentStartMonthIndex) {
+          startYear = parts[0];
+          startMonth = parts[1] - 2; // 1 month buffer
+        }
+      }
+    }
+    if (w.endDate) {
+      const parts = w.endDate.split('-').map(Number);
+      if (parts.length >= 2) {
+        const wEndMonthIndex = (parts[0] * 12) + (parts[1] - 1);
+        const currentEndMonthIndex = (endYear * 12) + endMonth;
+        if (wEndMonthIndex > currentEndMonthIndex) {
+          endYear = parts[0];
+          endMonth = parts[1] + 2; // 2 months buffer
+        }
+      }
+    }
+  }
+
+  // Check entries
+  for (const e of entries) {
+    if (e.date) {
+      const parts = e.date.split('-').map(Number);
+      if (parts.length >= 2) {
+        const eMonthIndex = (parts[0] * 12) + (parts[1] - 1);
+        const currentStartMonthIndex = (startYear * 12) + startMonth;
+        if (eMonthIndex < currentStartMonthIndex) {
+          startYear = parts[0];
+          startMonth = parts[1] - 2;
+        }
+        const currentEndMonthIndex = (endYear * 12) + endMonth;
+        if (eMonthIndex > currentEndMonthIndex) {
+          endYear = parts[0];
+          endMonth = parts[1] + 2;
+        }
+      }
+    }
+  }
+
+  const startDate = new Date(startYear, startMonth, 1);
+  const endTargetDate = new Date(endYear, endMonth, 1);
+
+  // Calculate total months span
+  let monthsSpan = (endTargetDate.getFullYear() - startDate.getFullYear()) * 12 + (endTargetDate.getMonth() - startDate.getMonth()) + 1;
+  if (monthsSpan < 48) monthsSpan = 48; // minimum 4 years for continuous stability
+
+  const totalDays = calculateTotalDays(startDate, monthsSpan);
+  const rangeEndDate = calculateEndDate(startDate, monthsSpan);
+
+  return { startDate, monthsSpan, totalDays, rangeEndDate };
+}
+
