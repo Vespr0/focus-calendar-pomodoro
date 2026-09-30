@@ -8,7 +8,7 @@
     "build": "node esbuild.config.mjs production"
   },
   "keywords": ["obsidian", "obsidian-plugin", "calendar", "pomodoro", "time-tracking", "schedule"],
-  "author": "Andrea",
+  "author": "Vespr0",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -2058,11 +2058,9 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     this.pomoLogs = Array.from(logMap.values());
   }
   renderView() {
-    const container = this.containerEl.children[1];
+    const container = this.contentEl;
     container.empty();
     container.addClass("fcp-main-container");
-    container.style.padding = "0";
-    container.style.margin = "0";
     const navBar = container.createDiv("fcp-nav-bar");
     const leftNav = navBar.createDiv("fcp-nav-left");
     const todayBtn = leftNav.createEl("button", { cls: "fcp-btn", text: "TODAY" });

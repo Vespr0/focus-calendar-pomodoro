@@ -32,12 +32,10 @@
   --fcp-crucial-glow: rgba(202, 138, 4, 0.35);
 }
 
-.workspace-leaf-content[data-type="focus-calendar-pomodoro-view"],
-.workspace-leaf-content[data-type="focus-calendar-pomodoro-view"] .view-content,
 .view-content.fcp-main-container,
 .fcp-main-container {
-  padding: 0 !important;
-  margin: 0 !important;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -47,6 +45,18 @@
   color: var(--text-normal);
   font-family: var(--font-interface, sans-serif);
   box-sizing: border-box;
+}
+
+/* Mobile Safe Area & Top UI Clearance */
+.is-mobile .fcp-main-container,
+.is-phone .fcp-main-container {
+  padding-left: max(0px, env(safe-area-inset-left, 0px));
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+
+/* On mobile phones, guarantee safe-area-inset-top so notification & battery bar never overlap */
+.is-phone .workspace-leaf-content[data-type="focus-calendar-pomodoro-view"] {
+  padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
 }
 
 /* Navigation Bar */
@@ -1641,3 +1651,171 @@ button.fcp-play-btn:hover {
 .fcp-window-modal {
   padding: 20px;
 }
+
+/* ==========================================================================
+   MOBILE & TOUCH ENHANCEMENTS
+   ========================================================================== */
+
+@media (max-width: 768px), (pointer: coarse) and (max-width: 850px) {
+  /* Navigation Bar */
+  .fcp-nav-bar {
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .fcp-nav-left {
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .fcp-nav-date-title {
+    font-size: 0.92rem;
+    margin-left: 4px;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .fcp-btn {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+  }
+
+  .fcp-icon-btn,
+  button.fcp-icon-btn {
+    padding: 4px 6px;
+  }
+
+  .fcp-mode-switch {
+    padding: 2px;
+    flex-shrink: 0;
+  }
+
+  .fcp-switch-btn {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+  }
+
+  /* Pomodoro Header Bar */
+  .fcp-pomodoro-header,
+  .fcp-pomodoro-header.month-mode {
+    height: auto;
+    min-height: 52px;
+    padding: 6px 10px;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  /* Remove massive blank left spacer on small screens */
+  .fcp-pomo-left-spacer {
+    display: none !important;
+    min-width: 0 !important;
+    width: 0 !important;
+    flex: 0 0 0 !important;
+  }
+
+  .fcp-pomo-center {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .fcp-radial-wrapper {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fcp-radial-wrapper svg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fcp-radial-text {
+    font-size: 0.72rem;
+  }
+
+  .fcp-mode-badge {
+    font-size: 0.62rem;
+    padding: 1px 6px;
+    max-width: 100px;
+  }
+
+  .fcp-btn-group {
+    gap: 4px;
+  }
+
+  .fcp-pomo-right {
+    min-width: unset;
+    flex: 0 0 auto;
+  }
+
+  .fcp-hours-card {
+    min-width: unset;
+    padding: 4px 8px;
+  }
+
+  .fcp-hours-val {
+    font-size: 0.82rem;
+  }
+
+  .fcp-hours-sub {
+    font-size: 0.62rem;
+  }
+
+  /* Week View Time Gutter & Columns */
+  .fcp-time-gutter-header,
+  .fcp-time-gutter,
+  .fcp-all-day-gutter-label {
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+  }
+
+  .fcp-time-label {
+    right: 3px;
+    font-size: 0.62rem;
+  }
+
+  .fcp-all-day-gutter-label {
+    font-size: 0.55rem;
+  }
+
+  .fcp-day-header-cell {
+    padding: 4px 1px;
+  }
+
+  .fcp-day-name {
+    font-size: 0.66rem;
+  }
+
+  .fcp-day-num {
+    font-size: 0.82rem;
+  }
+
+  .fcp-day-header-cell.is-today .fcp-day-num {
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+  }
+
+  .fcp-all-day-badge {
+    padding: 2px 4px;
+    font-size: 0.68rem;
+  }
+
+  .fcp-entry-card {
+    padding: 2px 3px;
+  }
+
+  .fcp-entry-title {
+    font-size: 0.72rem;
+  }
+
+  .fcp-entry-time {
+    font-size: 0.62rem;
+  }
+}
+

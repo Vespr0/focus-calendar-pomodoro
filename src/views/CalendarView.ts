@@ -95,11 +95,9 @@ export class FocusCalendarView extends ItemView {
   }
 
   public renderView(): void {
-    const container = this.containerEl.children[1] as HTMLElement;
+    const container = this.contentEl;
     container.empty();
     container.addClass('fcp-main-container');
-    container.style.padding = '0';
-    container.style.margin = '0';
 
     const navBar = container.createDiv('fcp-nav-bar');
 
