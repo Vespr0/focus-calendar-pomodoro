@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Platform } from 'obsidian';
 import { ViewMode, CalendarEntry, PomodoroLogSession, TimeWindow } from '../types';
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
@@ -117,7 +117,8 @@ export class FocusCalendarView extends ItemView {
     prevBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
     prevBtn.onclick = async () => {
       if (this.viewMode === 'week') {
-        this.currentDate.setDate(this.currentDate.getDate() - 7);
+        const step = this.isMobileWeekView() ? 3 : 7;
+        this.currentDate.setDate(this.currentDate.getDate() - step);
       } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
       }
@@ -129,7 +130,8 @@ export class FocusCalendarView extends ItemView {
     nextBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`;
     nextBtn.onclick = async () => {
       if (this.viewMode === 'week') {
-        this.currentDate.setDate(this.currentDate.getDate() + 7);
+        const step = this.isMobileWeekView() ? 3 : 7;
+        this.currentDate.setDate(this.currentDate.getDate() + step);
       } else if (this.viewMode === 'month') {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
       }
@@ -145,8 +147,13 @@ export class FocusCalendarView extends ItemView {
 
     const dateTitle = leftNav.createDiv('fcp-nav-date-title');
     if (this.viewMode === 'week') {
-      const { week, year } = this.getWeekNumberAndYear(this.currentDate);
-      dateTitle.textContent = `WEEK ${week}, ${year}`;
+      if (this.isMobileWeekView()) {
+        const dates = this.getActiveWeekViewDates();
+        dateTitle.textContent = this.formatDateRangeTitle(dates[0], dates[dates.length - 1]);
+      } else {
+        const { week, year } = this.getWeekNumberAndYear(this.currentDate);
+        dateTitle.textContent = `WEEK ${week}, ${year}`;
+      }
     } else if (this.viewMode === 'month') {
       dateTitle.textContent = this.currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
     } else {
@@ -156,7 +163,7 @@ export class FocusCalendarView extends ItemView {
     const modeSwitch = navBar.createDiv('fcp-mode-switch');
     const weekBtn = modeSwitch.createEl('button', {
       cls: `fcp-switch-btn ${this.viewMode === 'week' ? 'active' : ''}`,
-      text: 'WEEK'
+      text: this.isMobileWeekView() ? '3-DAY' : 'WEEK'
     });
     weekBtn.onclick = async () => {
       if (this.viewMode !== 'week') {
@@ -206,11 +213,11 @@ export class FocusCalendarView extends ItemView {
     const viewAreaContainer = container.createDiv('fcp-view-area');
 
     if (this.viewMode === 'week') {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
+      const dates = this.getActiveWeekViewDates();
       this.weekComponent = new WeekViewRenderComponent(
         this.app,
         viewAreaContainer,
-        weekStart,
+        dates,
         this.entries,
         {
           onEntryCreate: async (date, startTime, endTime) => {
@@ -423,18 +430,58 @@ export class FocusCalendarView extends ItemView {
     return map;
   }
 
+  private isMobileWeekView(): boolean {
+    return Platform.isMobile || (this.contentEl ? this.contentEl.clientWidth <= 680 : false);
+  }
+
+  private getActiveWeekViewDates(): Date[] {
+    if (this.isMobileWeekView()) {
+      const dates: Date[] = [];
+      const base = new Date(this.currentDate);
+      for (let i = 0; i < 3; i++) {
+        const d = new Date(base);
+        d.setDate(d.getDate() + i);
+        dates.push(d);
+      }
+      return dates;
+    } else {
+      const dates: Date[] = [];
+      const monday = this.getMondayOfWeek(this.currentDate);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(d.getDate() + i);
+        dates.push(d);
+      }
+      return dates;
+    }
+  }
+
+  private formatDateRangeTitle(first: Date, last: Date): string {
+    const fMonth = first.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const lMonth = last.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const fYear = first.getFullYear();
+    const lYear = last.getFullYear();
+
+    if (fYear !== lYear) {
+      return `${fMonth} ${first.getDate()}, ${fYear} – ${lMonth} ${last.getDate()}, ${lYear}`;
+    }
+    if (fMonth !== lMonth) {
+      return `${fMonth} ${first.getDate()} – ${lMonth} ${last.getDate()}, ${fYear}`;
+    }
+    return `${fMonth} ${first.getDate()} – ${last.getDate()}, ${fYear}`;
+  }
+
   private calculateTotalHours(): number {
     let totalSeconds = 0;
     if (this.viewMode === 'week') {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-
-      const weekStartIso = this.formatDateIso(weekStart);
-      const weekEndIso = this.formatDateIso(weekEnd);
+      const dates = this.getActiveWeekViewDates();
+      const firstIso = this.formatDateIso(dates[0]);
+      const last = new Date(dates[dates.length - 1]);
+      last.setDate(last.getDate() + 1);
+      const nextDayAfterLastIso = this.formatDateIso(last);
 
       this.pomoLogs.forEach(log => {
-        if (log.type === 'work' && log.date >= weekStartIso && log.date < weekEndIso) {
+        if (log.type === 'work' && log.date >= firstIso && log.date < nextDayAfterLastIso) {
           totalSeconds += log.durationSeconds;
         }
       });

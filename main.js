@@ -28,10 +28,10 @@ __export(main_exports, {
   default: () => FocusCalendarPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/views/CalendarView.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
@@ -169,10 +169,41 @@ var TaskEditModal = class extends import_obsidian.Modal {
     let descVal = this.entry.description || "";
     let typeVal = this.entry.type || "task";
     let windowIdVal = this.entry.windowId || "";
+    let dateVal = this.entry.date || (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    let allDayVal = Boolean(this.entry.allDay || !this.entry.startTime);
+    let startTimeVal = this.entry.startTime || "09:00";
+    let endTimeVal = this.entry.endTime || "10:00";
     new import_obsidian.Setting(contentEl).setName("Title").addText((text) => text.setPlaceholder("Title").setValue(titleVal).onChange((v) => {
       titleVal = v;
       this.currentTitleVal = v;
     }));
+    new import_obsidian.Setting(contentEl).setName("Date").addText((text) => {
+      text.inputEl.type = "date";
+      text.setValue(dateVal);
+      text.onChange((v) => {
+        dateVal = v;
+      });
+    });
+    const timeContainer = contentEl.createDiv("fcp-modal-time-settings");
+    new import_obsidian.Setting(contentEl).setName("All Day").addToggle((toggle) => toggle.setValue(allDayVal).onChange((v) => {
+      allDayVal = v;
+      timeContainer.style.display = v ? "none" : "block";
+    }));
+    timeContainer.style.display = allDayVal ? "none" : "block";
+    new import_obsidian.Setting(timeContainer).setName("Start Time").addText((text) => {
+      text.inputEl.type = "time";
+      text.setValue(startTimeVal);
+      text.onChange((v) => {
+        startTimeVal = v;
+      });
+    });
+    new import_obsidian.Setting(timeContainer).setName("End Time").addText((text) => {
+      text.inputEl.type = "time";
+      text.setValue(endTimeVal);
+      text.onChange((v) => {
+        endTimeVal = v;
+      });
+    });
     new import_obsidian.Setting(contentEl).setName("Description").addTextArea((text) => {
       text.setPlaceholder("Notes...").setValue(descVal).onChange((v) => {
         descVal = v;
@@ -223,6 +254,15 @@ var TaskEditModal = class extends import_obsidian.Modal {
       this.entry.title = titleVal.trim() || "Untitled";
       this.entry.description = descVal.trim() || void 0;
       this.entry.type = typeVal;
+      this.entry.date = dateVal;
+      this.entry.allDay = allDayVal;
+      if (allDayVal) {
+        this.entry.startTime = "";
+        this.entry.endTime = "";
+      } else {
+        this.entry.startTime = startTimeVal;
+        this.entry.endTime = endTimeVal;
+      }
       const targetWin = windowIdVal && windowIdVal !== "none" ? this.windows.find((w) => w.id === windowIdVal) : void 0;
       this.entry.windowId = targetWin && this.entry.date >= targetWin.startDate && this.entry.date <= targetWin.endDate ? targetWin.id : void 0;
       this.close();
@@ -238,7 +278,8 @@ var TaskEditModal = class extends import_obsidian.Modal {
 };
 var WeekViewRenderComponent = class {
   // pixels per 30 minutes (52 / 2)
-  constructor(app, containerEl, weekStart, entries, callbacks, windows = []) {
+  constructor(app, containerEl, datesOrStart, entries, callbacks, windows = []) {
+    this.dates = [];
     // Constants for 30-minute precision snapping
     this.startHour = 5;
     // 05:00
@@ -251,14 +292,36 @@ var WeekViewRenderComponent = class {
     this.slotHeight = 26;
     this.app = app;
     this.containerEl = containerEl;
-    this.weekStart = weekStart;
+    if (Array.isArray(datesOrStart)) {
+      this.dates = datesOrStart;
+      this.weekStart = datesOrStart[0] || /* @__PURE__ */ new Date();
+    } else {
+      this.weekStart = datesOrStart;
+      this.dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(datesOrStart);
+        d.setDate(d.getDate() + i);
+        this.dates.push(d);
+      }
+    }
     this.entries = entries;
     this.callbacks = callbacks;
     this.windows = windows;
     this.render();
   }
-  update(weekStart, entries, windows) {
-    this.weekStart = weekStart;
+  update(datesOrStart, entries, windows) {
+    if (Array.isArray(datesOrStart)) {
+      this.dates = datesOrStart;
+      this.weekStart = datesOrStart[0] || /* @__PURE__ */ new Date();
+    } else {
+      this.weekStart = datesOrStart;
+      this.dates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(datesOrStart);
+        d.setDate(d.getDate() + i);
+        this.dates.push(d);
+      }
+    }
     this.entries = entries;
     if (windows)
       this.windows = windows;
@@ -295,12 +358,8 @@ var WeekViewRenderComponent = class {
   render() {
     this.containerEl.empty();
     this.containerEl.addClass("fcp-week-view-wrapper");
-    const weekDates = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(this.weekStart);
-      d.setDate(d.getDate() + i);
-      weekDates.push(d);
-    }
+    this.containerEl.style.setProperty("--fcp-num-days", this.dates.length.toString());
+    const weekDates = this.dates;
     const todayStr = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
     const headerRow = this.containerEl.createDiv("fcp-week-header");
     headerRow.createDiv("fcp-time-gutter-header");
@@ -378,7 +437,11 @@ var WeekViewRenderComponent = class {
           ev.stopPropagation();
           this.openAllDayEditModal(newEntry);
         };
-        this.enableBadgeInlineEdit(badge, newEntry);
+        if (import_obsidian.Platform.isMobile) {
+          this.openAllDayEditModal(newEntry);
+        } else {
+          this.enableBadgeInlineEdit(badge, newEntry);
+        }
       };
     });
     const gridBody = this.containerEl.createDiv("fcp-week-grid-body");
@@ -412,7 +475,22 @@ var WeekViewRenderComponent = class {
       const colEl = columnsContainer.createDiv("fcp-day-column");
       colEl.dataset.date = dateStr;
       colEl.dataset.colIndex = colIndex.toString();
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let isScrollGesture = false;
+      colEl.addEventListener("pointerdown", (e) => {
+        touchStartX = e.clientX;
+        touchStartY = e.clientY;
+        isScrollGesture = false;
+      });
+      colEl.addEventListener("pointermove", (e) => {
+        if (Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY) > 10) {
+          isScrollGesture = true;
+        }
+      });
       colEl.addEventListener("click", async (e) => {
+        if (isScrollGesture)
+          return;
         if (e.target.closest(".fcp-entry-card"))
           return;
         const rect = colEl.getBoundingClientRect();
@@ -427,7 +505,11 @@ var WeekViewRenderComponent = class {
         const newEntry = await this.callbacks.onEntryCreate(dateStr, startTime, endTime);
         const newCard = this.renderEntryCard(colEl, newEntry);
         this.layoutDayColumn(dateStr);
-        this.enableCardInlineEdit(newCard, newEntry);
+        if (import_obsidian.Platform.isMobile) {
+          this.openEditModal(newEntry, newCard);
+        } else {
+          this.enableCardInlineEdit(newCard, newEntry);
+        }
       });
       const timedDayEntries = this.entries.filter((e) => e.date === dateStr && !e.allDay && Boolean(e.startTime));
       timedDayEntries.forEach((entry) => {
@@ -589,6 +671,9 @@ var WeekViewRenderComponent = class {
         return;
       e.stopPropagation();
       this.callbacks.onTaskFocus(entry);
+      if (import_obsidian.Platform.isMobile) {
+        this.openEditModal(entry, card);
+      }
     });
     card.addEventListener("dblclick", (e) => {
       e.stopPropagation();
@@ -640,11 +725,26 @@ var WeekViewRenderComponent = class {
     return card;
   }
   openEditModal(entry, card) {
+    const oldDate = entry.date;
     new TaskEditModal(
       this.app,
       entry,
       async (updatedEntry) => {
         this.upsertEntryLocal(updatedEntry);
+        if (updatedEntry.allDay || !updatedEntry.startTime) {
+          card.remove();
+          await this.callbacks.onEntryUpdate(updatedEntry, oldDate);
+          this.render();
+          return;
+        }
+        if (updatedEntry.date !== oldDate) {
+          const newCol = this.containerEl.querySelector(`.fcp-day-column[data-date="${updatedEntry.date}"]`);
+          if (newCol) {
+            newCol.appendChild(card);
+          } else {
+            card.remove();
+          }
+        }
         this.renderCardContent(card, updatedEntry);
         card.className = `fcp-entry-card type-${updatedEntry.type} ${this.callbacks.getFocusedTaskId() === updatedEntry.id ? "is-focused" : ""} ${parseFloat(card.style.height) <= this.slotHeight ? "is-short" : ""}`;
         const startMins = this.snapTo30Min(this.timeStrToMinutes(updatedEntry.startTime));
@@ -657,8 +757,11 @@ var WeekViewRenderComponent = class {
         const heightPx = Math.max(1, Math.round((clampedEnd - clampedStart) / 30)) * this.slotHeight;
         card.style.top = `${topPx}px`;
         card.style.height = `${heightPx}px`;
-        await this.callbacks.onEntryUpdate(updatedEntry);
-        this.layoutDayColumn(updatedEntry.date);
+        await this.callbacks.onEntryUpdate(updatedEntry, oldDate);
+        this.layoutDayColumn(oldDate);
+        if (updatedEntry.date !== oldDate) {
+          this.layoutDayColumn(updatedEntry.date);
+        }
       },
       async (deletedEntry) => {
         this.deleteEntryLocal(deletedEntry.id);
@@ -811,8 +914,13 @@ var WeekViewRenderComponent = class {
     let isOverAllDay = false;
     let targetAllDayCell = null;
     const maxGridHeight = this.totalHours * this.hourHeight;
-    const onMouseDown = (e) => {
-      if (e.button !== 0 || card.classList.contains("is-editing"))
+    const cleanupListeners = () => {
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerCancel);
+    };
+    const onPointerDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0 || card.classList.contains("is-editing"))
         return;
       const target = e.target;
       if (target.classList.contains("top")) {
@@ -829,14 +937,16 @@ var WeekViewRenderComponent = class {
       startY = e.clientY;
       startTop = parseFloat(card.style.top) || 0;
       startHeight = parseFloat(card.style.height) || this.slotHeight;
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", onPointerUp);
+      document.addEventListener("pointercancel", onPointerCancel);
     };
-    const onMouseMove = (e) => {
+    const onPointerMove = (e) => {
       if (!isDragging)
         return;
       const deltaY = e.clientY - startY;
-      if (Math.abs(deltaY) > 3) {
+      const threshold = e.pointerType === "touch" ? 8 : 3;
+      if (Math.abs(deltaY) > threshold) {
         hasMoved = true;
         card.addClass("is-dragging");
       }
@@ -871,9 +981,10 @@ var WeekViewRenderComponent = class {
         card.style.top = `${snappedTop}px`;
         if (columnsContainer) {
           const rect = columnsContainer.getBoundingClientRect();
-          const colWidth = rect.width / 7;
+          const numCols = this.dates.length || 7;
+          const colWidth = rect.width / numCols;
           const relX = e.clientX - rect.left;
-          const targetColIndex = Math.max(0, Math.min(6, Math.floor(relX / colWidth)));
+          const targetColIndex = Math.max(0, Math.min(numCols - 1, Math.floor(relX / colWidth)));
           const targetColEl = columnsContainer.querySelector(`.fcp-day-column[data-col-index="${targetColIndex}"]`);
           if (targetColEl && card.parentElement !== targetColEl) {
             targetColEl.appendChild(card);
@@ -914,7 +1025,7 @@ var WeekViewRenderComponent = class {
         }
       }
     };
-    const onMouseUp = async (e) => {
+    const onPointerCancel = () => {
       if (!isDragging)
         return;
       isDragging = false;
@@ -922,8 +1033,25 @@ var WeekViewRenderComponent = class {
       card.removeClass("is-dropping-all-day");
       const allDayCells = this.containerEl.querySelectorAll(".fcp-all-day-cell");
       allDayCells.forEach((c) => c.removeClass("is-drag-over"));
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      cleanupListeners();
+      card.style.top = `${startTop}px`;
+      card.style.height = `${startHeight}px`;
+      if (entry.date) {
+        const origCol = this.containerEl.querySelector(`.fcp-day-column[data-date="${entry.date}"]`);
+        if (origCol && card.parentElement !== origCol) {
+          origCol.appendChild(card);
+        }
+      }
+    };
+    const onPointerUp = async (e) => {
+      if (!isDragging)
+        return;
+      isDragging = false;
+      card.removeClass("is-dragging");
+      card.removeClass("is-dropping-all-day");
+      const allDayCells = this.containerEl.querySelectorAll(".fcp-all-day-cell");
+      allDayCells.forEach((c) => c.removeClass("is-drag-over"));
+      cleanupListeners();
       if (!hasMoved)
         return;
       const oldDate = entry.date;
@@ -955,7 +1083,7 @@ var WeekViewRenderComponent = class {
         this.layoutDayColumn(entry.date);
       }
     };
-    card.addEventListener("mousedown", onMouseDown);
+    card.addEventListener("pointerdown", onPointerDown);
   }
   formatDateIso(d) {
     const y = d.getFullYear();
@@ -998,6 +1126,7 @@ var WeekViewRenderComponent = class {
 };
 
 // src/views/MonthViewRender.ts
+var import_obsidian2 = require("obsidian");
 var MonthViewRenderComponent = class {
   constructor(containerEl, year, month, entries, pomoLogs, dailyHoursMap, callbacks) {
     this.containerEl = containerEl;
@@ -1046,7 +1175,11 @@ var MonthViewRenderComponent = class {
     const daysInPrevMonth = new Date(this.currentYear, this.currentMonth, 0).getDate();
     const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
     const numRows = totalCells / 7;
-    monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
+    if (import_obsidian2.Platform.isMobile) {
+      monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(90px, auto))`;
+    } else {
+      monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
+    }
     const todayIso = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
     for (let i = 0; i < totalCells; i++) {
       let dayNumber;
@@ -1891,8 +2024,8 @@ var TimelineViewRenderComponent = class {
 };
 
 // src/views/TimeWindowModal.ts
-var import_obsidian2 = require("obsidian");
-var TimeWindowModal = class extends import_obsidian2.Modal {
+var import_obsidian3 = require("obsidian");
+var TimeWindowModal = class extends import_obsidian3.Modal {
   constructor(app, windowData, onSave, onDelete) {
     super(app);
     this.isNew = !windowData || !windowData.id;
@@ -1910,27 +2043,27 @@ var TimeWindowModal = class extends import_obsidian2.Modal {
     let endDateVal = this.windowData.endDate || new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString().substring(0, 10);
     let colorVal = this.windowData.color || "indigo";
     let descVal = this.windowData.description || "";
-    new import_obsidian2.Setting(contentEl).setName("Title").setDesc('e.g. "Third Year Lessons", "First Exam Session"').addText((text) => text.setPlaceholder("Window title...").setValue(titleVal).onChange((v) => {
+    new import_obsidian3.Setting(contentEl).setName("Title").setDesc('e.g. "Third Year Lessons", "First Exam Session"').addText((text) => text.setPlaceholder("Window title...").setValue(titleVal).onChange((v) => {
       titleVal = v;
     }));
-    new import_obsidian2.Setting(contentEl).setName("Start Date").setDesc("Beginning of this time period (YYYY-MM-DD)").addText((text) => {
+    new import_obsidian3.Setting(contentEl).setName("Start Date").setDesc("Beginning of this time period (YYYY-MM-DD)").addText((text) => {
       text.inputEl.type = "date";
       text.setValue(startDateVal);
       text.onChange((v) => {
         startDateVal = v;
       });
     });
-    new import_obsidian2.Setting(contentEl).setName("End Date").setDesc("End of this time period (YYYY-MM-DD)").addText((text) => {
+    new import_obsidian3.Setting(contentEl).setName("End Date").setDesc("End of this time period (YYYY-MM-DD)").addText((text) => {
       text.inputEl.type = "date";
       text.setValue(endDateVal);
       text.onChange((v) => {
         endDateVal = v;
       });
     });
-    new import_obsidian2.Setting(contentEl).setName("Color Accent").setDesc("Visual color theme for this window banner.").addDropdown((drop) => drop.addOption("indigo", "Indigo").addOption("emerald", "Emerald").addOption("amber", "Amber / Gold").addOption("rose", "Rose").addOption("cyan", "Cyan").addOption("purple", "Purple").setValue(colorVal).onChange((v) => {
+    new import_obsidian3.Setting(contentEl).setName("Color Accent").setDesc("Visual color theme for this window banner.").addDropdown((drop) => drop.addOption("indigo", "Indigo").addOption("emerald", "Emerald").addOption("amber", "Amber / Gold").addOption("rose", "Rose").addOption("cyan", "Cyan").addOption("purple", "Purple").setValue(colorVal).onChange((v) => {
       colorVal = v;
     }));
-    new import_obsidian2.Setting(contentEl).setName("Description / Notes").setDesc("Optional notes or syllabus details.").addTextArea((text) => {
+    new import_obsidian3.Setting(contentEl).setName("Description / Notes").setDesc("Optional notes or syllabus details.").addTextArea((text) => {
       text.setPlaceholder("Enter details...").setValue(descVal).onChange((v) => {
         descVal = v;
       });
@@ -1991,7 +2124,7 @@ var TimeWindowModal = class extends import_obsidian2.Modal {
 
 // src/views/CalendarView.ts
 var VIEW_TYPE_FOCUS_CALENDAR = "focus-calendar-pomodoro-view";
-var FocusCalendarView = class extends import_obsidian3.ItemView {
+var FocusCalendarView = class extends import_obsidian4.ItemView {
   constructor(leaf, storage, pomodoro) {
     super(leaf);
     this.viewMode = "week";
@@ -2078,7 +2211,8 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     prevBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`;
     prevBtn.onclick = async () => {
       if (this.viewMode === "week") {
-        this.currentDate.setDate(this.currentDate.getDate() - 7);
+        const step = this.isMobileWeekView() ? 3 : 7;
+        this.currentDate.setDate(this.currentDate.getDate() - step);
       } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
       }
@@ -2089,7 +2223,8 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     nextBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`;
     nextBtn.onclick = async () => {
       if (this.viewMode === "week") {
-        this.currentDate.setDate(this.currentDate.getDate() + 7);
+        const step = this.isMobileWeekView() ? 3 : 7;
+        this.currentDate.setDate(this.currentDate.getDate() + step);
       } else if (this.viewMode === "month") {
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
       }
@@ -2102,8 +2237,13 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     }
     const dateTitle = leftNav.createDiv("fcp-nav-date-title");
     if (this.viewMode === "week") {
-      const { week, year } = this.getWeekNumberAndYear(this.currentDate);
-      dateTitle.textContent = `WEEK ${week}, ${year}`;
+      if (this.isMobileWeekView()) {
+        const dates = this.getActiveWeekViewDates();
+        dateTitle.textContent = this.formatDateRangeTitle(dates[0], dates[dates.length - 1]);
+      } else {
+        const { week, year } = this.getWeekNumberAndYear(this.currentDate);
+        dateTitle.textContent = `WEEK ${week}, ${year}`;
+      }
     } else if (this.viewMode === "month") {
       dateTitle.textContent = this.currentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase();
     } else {
@@ -2112,7 +2252,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     const modeSwitch = navBar.createDiv("fcp-mode-switch");
     const weekBtn = modeSwitch.createEl("button", {
       cls: `fcp-switch-btn ${this.viewMode === "week" ? "active" : ""}`,
-      text: "WEEK"
+      text: this.isMobileWeekView() ? "3-DAY" : "WEEK"
     });
     weekBtn.onclick = async () => {
       if (this.viewMode !== "week") {
@@ -2157,11 +2297,11 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     }
     const viewAreaContainer = container.createDiv("fcp-view-area");
     if (this.viewMode === "week") {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
+      const dates = this.getActiveWeekViewDates();
       this.weekComponent = new WeekViewRenderComponent(
         this.app,
         viewAreaContainer,
-        weekStart,
+        dates,
         this.entries,
         {
           onEntryCreate: async (date, startTime, endTime) => {
@@ -2390,16 +2530,53 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
     });
     return map;
   }
+  isMobileWeekView() {
+    return import_obsidian4.Platform.isMobile || (this.contentEl ? this.contentEl.clientWidth <= 680 : false);
+  }
+  getActiveWeekViewDates() {
+    if (this.isMobileWeekView()) {
+      const dates = [];
+      const base = new Date(this.currentDate);
+      for (let i = 0; i < 3; i++) {
+        const d = new Date(base);
+        d.setDate(d.getDate() + i);
+        dates.push(d);
+      }
+      return dates;
+    } else {
+      const dates = [];
+      const monday = this.getMondayOfWeek(this.currentDate);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(d.getDate() + i);
+        dates.push(d);
+      }
+      return dates;
+    }
+  }
+  formatDateRangeTitle(first, last) {
+    const fMonth = first.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+    const lMonth = last.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+    const fYear = first.getFullYear();
+    const lYear = last.getFullYear();
+    if (fYear !== lYear) {
+      return `${fMonth} ${first.getDate()}, ${fYear} \u2013 ${lMonth} ${last.getDate()}, ${lYear}`;
+    }
+    if (fMonth !== lMonth) {
+      return `${fMonth} ${first.getDate()} \u2013 ${lMonth} ${last.getDate()}, ${fYear}`;
+    }
+    return `${fMonth} ${first.getDate()} \u2013 ${last.getDate()}, ${fYear}`;
+  }
   calculateTotalHours() {
     let totalSeconds = 0;
     if (this.viewMode === "week") {
-      const weekStart = this.getMondayOfWeek(this.currentDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const weekStartIso = this.formatDateIso(weekStart);
-      const weekEndIso = this.formatDateIso(weekEnd);
+      const dates = this.getActiveWeekViewDates();
+      const firstIso = this.formatDateIso(dates[0]);
+      const last = new Date(dates[dates.length - 1]);
+      last.setDate(last.getDate() + 1);
+      const nextDayAfterLastIso = this.formatDateIso(last);
       this.pomoLogs.forEach((log) => {
-        if (log.type === "work" && log.date >= weekStartIso && log.date < weekEndIso) {
+        if (log.type === "work" && log.date >= firstIso && log.date < nextDayAfterLastIso) {
           totalSeconds += log.durationSeconds;
         }
       });
@@ -2435,7 +2612,7 @@ var FocusCalendarView = class extends import_obsidian3.ItemView {
 };
 
 // src/storage.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 var StorageManager = class {
   constructor(app, settingsGetter) {
     this.isLocalSaving = false;
@@ -2443,7 +2620,7 @@ var StorageManager = class {
     this.settingsGetter = settingsGetter;
   }
   get dataFolder() {
-    return (0, import_obsidian4.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
+    return (0, import_obsidian5.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
   }
   async ensureDataFolderExists() {
     const folderPath = this.dataFolder;
@@ -2453,13 +2630,13 @@ var StorageManager = class {
     }
   }
   getMonthFilePath(yearMonth) {
-    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
+    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
   }
   getPomodoroLogFilePath(yearMonth) {
-    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
   }
   getWindowsFilePath() {
-    return (0, import_obsidian4.normalizePath)(`${this.dataFolder}/windows.json`);
+    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/windows.json`);
   }
   async loadTimeWindows() {
     await this.ensureDataFolderExists();
@@ -2614,7 +2791,7 @@ var StorageManager = class {
 };
 
 // src/pomodoro.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 var PomodoroManager = class {
   constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
     this.mode = "work";
@@ -2677,7 +2854,7 @@ var PomodoroManager = class {
     this.focusedTask = task;
     if (!task && this.mode === "work" && this.isRunning) {
       this.pause();
-      new import_obsidian5.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
+      new import_obsidian6.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
     }
     this.notifyState();
   }
@@ -2688,7 +2865,7 @@ var PomodoroManager = class {
     if (this.isRunning)
       return true;
     if (this.mode === "work" && !this.focusedTask) {
-      new import_obsidian5.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
+      new import_obsidian6.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
       return false;
     }
     this.isRunning = true;
@@ -2814,8 +2991,8 @@ var PomodoroManager = class {
 };
 
 // src/settings.ts
-var import_obsidian6 = require("obsidian");
-var FocusCalendarSettingTab = class extends import_obsidian6.PluginSettingTab {
+var import_obsidian7 = require("obsidian");
+var FocusCalendarSettingTab = class extends import_obsidian7.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -2825,7 +3002,7 @@ var FocusCalendarSettingTab = class extends import_obsidian6.PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "Calendar & Focus Settings" });
     containerEl.createEl("h3", { text: "Pomodoro Timer" });
-    new import_obsidian6.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.workDurationMinutes = val;
@@ -2833,7 +3010,7 @@ var FocusCalendarSettingTab = class extends import_obsidian6.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian6.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.breakDurationMinutes = val;
@@ -2841,41 +3018,41 @@ var FocusCalendarSettingTab = class extends import_obsidian6.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian6.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
       this.plugin.settings.autoStartBreak = value;
       await this.plugin.saveSettings();
     }));
     containerEl.createEl("h3", { text: "Audio Notifications" });
-    const focusSoundSetting = new import_obsidian6.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
+    const focusSoundSetting = new import_obsidian7.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.focusEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Focus completion sound").onClick(async () => {
       const path = (this.plugin.settings.focusEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian6.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian7.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian6.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian7.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
-    const breakSoundSetting = new import_obsidian6.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
+    const breakSoundSetting = new import_obsidian7.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.breakEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Break completion sound").onClick(async () => {
       const path = (this.plugin.settings.breakEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian6.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian7.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian6.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian7.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
     containerEl.createEl("h3", { text: "Storage" });
-    new import_obsidian6.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
+    new import_obsidian7.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
       this.plugin.settings.dataDirectory = value.trim() || "calendar-data";
       await this.plugin.saveSettings();
     }));
@@ -2891,7 +3068,7 @@ var DEFAULT_SETTINGS = {
   focusEndSoundPath: "",
   breakEndSoundPath: ""
 };
-var FocusCalendarPlugin = class extends import_obsidian7.Plugin {
+var FocusCalendarPlugin = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -3069,7 +3246,7 @@ var FocusCalendarPlugin = class extends import_obsidian7.Plugin {
   async playVaultAudio(filePath, showNoticeOnFail = false) {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian7.TFile) {
+      if (file instanceof import_obsidian8.TFile) {
         const resourcePath = this.app.vault.getResourcePath(file);
         const audio = new Audio(resourcePath);
         audio.volume = 0.5;
@@ -3079,14 +3256,14 @@ var FocusCalendarPlugin = class extends import_obsidian7.Plugin {
         const msg = `Focus Calendar: Sound file not found at path: "${filePath}"`;
         console.warn(msg);
         if (showNoticeOnFail) {
-          new import_obsidian7.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
+          new import_obsidian8.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
         }
         return false;
       }
     } catch (err) {
       console.error("Focus Calendar: Failed to play audio file from vault", err);
       if (showNoticeOnFail) {
-        new import_obsidian7.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
+        new import_obsidian8.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
       }
       return false;
     }

@@ -1,3 +1,4 @@
+import { Platform } from 'obsidian';
 import { CalendarEntry, PomodoroLogSession } from '../types';
 
 export interface MonthViewCallbacks {
@@ -85,7 +86,11 @@ export class MonthViewRenderComponent {
 
     const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
     const numRows = totalCells / 7;
-    monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
+    if (Platform.isMobile) {
+      monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(90px, auto))`;
+    } else {
+      monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
+    }
     const todayIso = new Date().toISOString().substring(0, 10);
 
     for (let i = 0; i < totalCells; i++) {

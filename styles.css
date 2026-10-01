@@ -367,7 +367,7 @@ button.fcp-play-btn:hover {
 .fcp-week-days-header-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(var(--fcp-num-days, 7), 1fr);
   box-sizing: border-box;
 }
 
@@ -432,7 +432,7 @@ button.fcp-play-btn:hover {
 
 .fcp-week-all-day-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--fcp-num-days, 7), minmax(0, 1fr));
   flex: 1;
   box-sizing: border-box;
 }
@@ -569,7 +569,7 @@ button.fcp-play-btn:hover {
 .fcp-columns-container {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(var(--fcp-num-days, 7), 1fr);
   position: relative;
   box-sizing: border-box;
 }
@@ -694,15 +694,17 @@ button.fcp-play-btn:hover {
   z-index: 10 !important;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
   opacity: 0.95;
+  touch-action: none;
 }
 
 .fcp-resize-handle {
   position: absolute;
   left: 0;
   right: 0;
-  height: 6px;
+  height: 8px;
   cursor: ns-resize;
   z-index: 3;
+  touch-action: none;
 }
 
 .fcp-resize-handle.top {
@@ -846,6 +848,9 @@ button.fcp-play-btn:hover {
   background: var(--background-secondary);
   box-sizing: border-box;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .fcp-month-weekday-col {
@@ -1817,5 +1822,72 @@ button.fcp-play-btn:hover {
   .fcp-entry-time {
     font-size: 0.62rem;
   }
+
+  /* Mobile Month View: Scrollable 7-day grid with comfortable cell height */
+  .fcp-month-layout-container {
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fcp-month-grid-panel {
+    flex-shrink: 0;
+  }
+
+  .fcp-month-grid {
+    overflow-y: visible;
+  }
+
+  .fcp-month-cell {
+    min-height: 90px;
+  }
+
+  .fcp-month-breakdown-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+  }
+
+  /* Resize handle on touch */
+  .fcp-resize-handle {
+    height: 12px;
+  }
+}
+
+/* Explicit Obsidian mobile classes */
+.is-phone .fcp-month-layout-container,
+.is-mobile .fcp-month-layout-container {
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.is-phone .fcp-month-grid-panel,
+.is-mobile .fcp-month-grid-panel {
+  flex-shrink: 0;
+}
+
+.is-phone .fcp-month-grid,
+.is-mobile .fcp-month-grid {
+  overflow-y: visible;
+}
+
+.is-phone .fcp-month-cell,
+.is-mobile .fcp-month-cell {
+  min-height: 90px;
+}
+
+.is-phone .fcp-month-breakdown-panel,
+.is-mobile .fcp-month-breakdown-panel {
+  width: 100%;
+  border-left: none;
+  border-top: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.is-phone .fcp-resize-handle,
+.is-mobile .fcp-resize-handle {
+  height: 12px;
 }
 
