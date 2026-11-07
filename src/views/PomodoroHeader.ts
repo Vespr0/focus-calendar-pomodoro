@@ -1,5 +1,6 @@
 import { PomodoroManager } from '../pomodoro';
 import { ViewMode } from '../types';
+import { formatHoursAndMinutes } from '../utils';
 
 export class PomodoroHeaderComponent {
   private containerEl: HTMLElement;
@@ -45,7 +46,7 @@ export class PomodoroHeaderComponent {
     const hoursCard = rightSection.createDiv('fcp-hours-card');
 
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-val">${formatHoursAndMinutes(this.totalHours, true)}</div>
       <div class="fcp-hours-sub">This month</div>
     `;
   }
@@ -137,7 +138,7 @@ export class PomodoroHeaderComponent {
     const hoursCard = rightSection.createDiv('fcp-hours-card');
 
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-val">${formatHoursAndMinutes(this.totalHours, true)}</div>
       <div class="fcp-hours-sub">This week</div>
     `;
   }

@@ -135,20 +135,46 @@ button.fcp-btn,
 .fcp-switch-btn {
   background: transparent;
   border: none;
-  padding: 4px 14px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-muted);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+}
+
+.fcp-switch-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2px;
+}
+
+.fcp-switch-btn:hover:not(.active) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 .fcp-switch-btn.active {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
+}
+
+.fcp-today-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.fcp-today-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Header Slot / Pomodoro Bar */
@@ -321,6 +347,12 @@ button.fcp-play-btn:hover {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-muted);
+  margin-left: 1px;
+  margin-right: 2px;
+}
+
+.fcp-hours-unit:last-child {
+  margin-right: 0;
 }
 
 .fcp-hours-sub {
@@ -612,6 +644,30 @@ button.fcp-play-btn:hover {
 
 .fcp-day-column:last-child {
   border-right: none;
+}
+
+/* Current Time Indicator in Week View */
+.fcp-current-time-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--interactive-accent);
+  z-index: 10;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.fcp-current-time-indicator::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-primary);
 }
 
 /* Entry Cards */
@@ -1889,5 +1945,622 @@ button.fcp-play-btn:hover {
 .is-phone .fcp-resize-handle,
 .is-mobile .fcp-resize-handle {
   height: 12px;
+}
+
+/* ==========================================================================
+   MONTH VIEW SUB-NAVIGATION & CONTENT AREA
+   ========================================================================== */
+.fcp-month-view-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.fcp-month-subnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--background-secondary-alt);
+  border-bottom: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+.fcp-subnav-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--background-secondary);
+  padding: 2px 3px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.fcp-subnav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.fcp-subnav-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fcp-subnav-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.fcp-subnav-btn.active {
+  background: var(--background-primary);
+  color: var(--interactive-accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.fcp-subnav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fcp-subnav-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.fcp-subnav-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fcp-subnav-icon-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
+.fcp-subnav-meta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.fcp-month-content-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Fused Statistics (Left) & Milestones (Right) Split Panel */
+.fcp-month-fused-panel {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.fcp-month-stats-pane {
+  flex: 0 0 38%;
+  min-width: 260px;
+  max-width: 440px;
+  height: 100%;
+  overflow-y: auto;
+  border-right: 1px solid var(--background-modifier-border);
+  box-sizing: border-box;
+  background: var(--background-primary);
+}
+
+.fcp-month-milestones-pane {
+  flex: 1 1 62%;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--background-primary);
+}
+
+@media (max-width: 768px) {
+  .fcp-month-fused-panel {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .fcp-month-stats-pane {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+  .fcp-month-milestones-pane {
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+  }
+}
+
+/* ==========================================================================
+   MILESTONES MINIMALIST VIEW STYLES
+   ========================================================================== */
+.fcp-milestones-full-wrapper {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  padding: 16px 24px;
+  box-sizing: border-box;
+  background: var(--background-primary);
+}
+
+/* Categories List */
+.fcp-ms-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Category Block */
+.fcp-ms-category-block {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.fcp-ms-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.fcp-ms-cat-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.fcp-ms-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.fcp-ms-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fcp-ms-chevron:hover {
+  color: var(--text-normal);
+}
+
+/* Mini Radial Progress Ring next to Category Name */
+.fcp-ms-radial-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.fcp-ms-radial-svg {
+  display: block;
+}
+
+.fcp-ms-radial-text {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+.fcp-ms-cat-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-normal);
+  flex: 1;
+  cursor: text;
+}
+
+.fcp-ms-cat-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.fcp-ms-category-block:hover .fcp-ms-cat-actions {
+  opacity: 1;
+}
+
+.fcp-ms-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fcp-ms-icon-action svg {
+  width: 13px;
+  height: 13px;
+}
+
+.fcp-ms-icon-action:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.fcp-ms-action-danger:hover {
+  color: var(--text-error, #ef4444) !important;
+}
+
+/* Indented Milestones Items Container */
+.fcp-ms-items-container {
+  margin-top: 6px;
+  margin-left: 8px;
+  padding-left: 18px;
+  border-left: 2px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Milestone Item Block */
+.fcp-ms-item-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  transition: background 0.12s ease;
+}
+
+.fcp-ms-item-block:hover {
+  background: var(--background-modifier-hover);
+}
+
+.fcp-ms-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+/* Checkbox Button */
+.fcp-ms-check-btn {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.fcp-ms-check-btn:hover {
+  transform: scale(1.15);
+}
+
+.fcp-ms-check-btn.status-done {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.fcp-ms-check-btn.status-done svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3px;
+}
+
+.fcp-ms-todo-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-muted);
+  box-sizing: border-box;
+}
+
+.fcp-ms-skipped-dot {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.fcp-ms-item-title {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-normal);
+  flex: 1;
+  word-break: break-word;
+  cursor: text;
+}
+
+.status-done .fcp-ms-item-title {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.status-skipped .fcp-ms-item-title {
+  opacity: 0.75;
+}
+
+.fcp-ms-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.fcp-ms-item-block:hover .fcp-ms-item-actions {
+  opacity: 1;
+}
+
+/* Deeper Indented Sub-Items Tree */
+.fcp-ms-subitems-container {
+  margin-left: 24px;
+  padding-left: 12px;
+  border-left: 1.5px dashed var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.fcp-ms-subitem-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.fcp-ms-subitem-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-normal);
+}
+
+.theme-dark .fcp-ms-subitem-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fcp-ms-subitem-bullet {
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--text-muted);
+  user-select: none;
+  flex-shrink: 0;
+  width: 10px;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.fcp-ms-subitem-text {
+  flex: 1;
+  cursor: text;
+  word-break: break-word;
+}
+
+.fcp-ms-del-subitem {
+  opacity: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.fcp-ms-del-subitem svg {
+  width: 11px;
+  height: 11px;
+}
+
+.fcp-ms-subitem-row:hover .fcp-ms-del-subitem {
+  opacity: 0.8;
+}
+
+/* Quick Add Rows (Clever Spacing) */
+.fcp-ms-add-row,
+.fcp-ms-add-category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  cursor: text;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+
+.fcp-ms-add-row:hover,
+.fcp-ms-add-category-row:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.fcp-ms-add-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fcp-ms-add-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.fcp-ms-add-input,
+.fcp-ms-inline-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-normal);
+  font-size: 0.86rem;
+  width: 100%;
+  font-family: inherit;
+}
+
+.fcp-ms-add-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.fcp-ms-inline-input {
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* Import Modal */
+.fcp-import-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-monospace);
+  font-size: 0.82rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  resize: vertical;
+}
+
+/* ==========================================================================
+   STATISTICS MINIMALIST VIEW STYLES
+   ========================================================================== */
+.fcp-stats-full-wrapper {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  background: var(--background-primary);
+}
+
+.fcp-stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fcp-stats-full-bar {
+  height: 14px !important;
+  border-radius: 7px !important;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  margin-bottom: 0;
+}
+
+.fcp-stats-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fcp-stats-detail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  transition: background 0.12s ease;
+}
+
+.fcp-stats-detail-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.fcp-stats-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fcp-stats-item-name {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fcp-stats-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.fcp-stats-item-hours {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.fcp-stats-item-pct {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-normal);
+  min-width: 30px;
+  text-align: right;
+}
+
+.fcp-stats-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 

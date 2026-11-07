@@ -28,10 +28,69 @@ __export(main_exports, {
   default: () => FocusCalendarPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian8 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 
 // src/views/CalendarView.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian8 = require("obsidian");
+
+// src/views/milestones/MilestonesUtils.ts
+function calculateCategoryProgress(cat) {
+  const total = cat.items.length;
+  const completed = cat.items.filter((i) => i.status === "done" || i.status === "skipped").length;
+  const pct = total > 0 ? Math.round(completed / total * 100) : 0;
+  return { total, completed, pct };
+}
+
+// src/utils.ts
+function formatHoursAndMinutes(totalHours, htmlUnits = false) {
+  const safeHours = typeof totalHours === "number" && !isNaN(totalHours) && totalHours > 0 ? totalHours : 0;
+  const totalMinutes = Math.round(safeHours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (htmlUnits) {
+    if (h === 0 && m === 0) {
+      return `0<span class="fcp-hours-unit">h</span> 0<span class="fcp-hours-unit">m</span>`;
+    }
+    if (h === 0) {
+      return `${m}<span class="fcp-hours-unit">m</span>`;
+    }
+    if (m === 0) {
+      return `${h}<span class="fcp-hours-unit">h</span>`;
+    }
+    return `${h}<span class="fcp-hours-unit">h</span> ${m}<span class="fcp-hours-unit">m</span>`;
+  }
+  if (h === 0 && m === 0)
+    return "0h 0m";
+  if (h === 0)
+    return `${m}m`;
+  if (m === 0)
+    return `${h}h`;
+  return `${h}h ${m}m`;
+}
+function getThemeAccentHue() {
+  if (typeof document === "undefined")
+    return 220;
+  try {
+    const style = getComputedStyle(document.body);
+    const h = style.getPropertyValue("--accent-h").trim();
+    if (h && !isNaN(Number(h))) {
+      return Number(h);
+    }
+  } catch (e) {
+  }
+  return 220;
+}
+function getTonalColor(index, total, baseHue) {
+  const hue = baseHue !== void 0 ? baseHue : getThemeAccentHue();
+  if (total <= 1) {
+    return `hsl(${hue}, 75%, 52%)`;
+  }
+  const lightnessLevels = [52, 70, 38, 78, 44, 62, 32, 84];
+  const satLevels = [80, 68, 75, 62, 85, 65, 70, 58];
+  const l = lightnessLevels[index % lightnessLevels.length];
+  const s = satLevels[index % satLevels.length];
+  return `hsl(${hue}, ${s}%, ${l}%)`;
+}
 
 // src/views/PomodoroHeader.ts
 var PomodoroHeaderComponent = class {
@@ -64,7 +123,7 @@ var PomodoroHeaderComponent = class {
     const rightSection = this.containerEl.createDiv("fcp-pomo-right");
     const hoursCard = rightSection.createDiv("fcp-hours-card");
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-val">${formatHoursAndMinutes(this.totalHours, true)}</div>
       <div class="fcp-hours-sub">This month</div>
     `;
   }
@@ -134,7 +193,7 @@ var PomodoroHeaderComponent = class {
     const rightSection = this.containerEl.createDiv("fcp-pomo-right");
     const hoursCard = rightSection.createDiv("fcp-hours-card");
     hoursCard.innerHTML = `
-      <div class="fcp-hours-val">${this.totalHours.toFixed(1)} <span class="fcp-hours-unit">HRS</span></div>
+      <div class="fcp-hours-val">${formatHoursAndMinutes(this.totalHours, true)}</div>
       <div class="fcp-hours-sub">This week</div>
     `;
   }
@@ -277,7 +336,6 @@ var TaskEditModal = class extends import_obsidian.Modal {
   }
 };
 var WeekViewRenderComponent = class {
-  // pixels per 30 minutes (52 / 2)
   constructor(app, containerEl, datesOrStart, entries, callbacks, windows = []) {
     this.dates = [];
     // Constants for 30-minute precision snapping
@@ -290,6 +348,9 @@ var WeekViewRenderComponent = class {
     this.hourHeight = 52;
     // pixels per hour
     this.slotHeight = 26;
+    // pixels per 30 minutes (52 / 2)
+    this.currentTimeEl = null;
+    this.currentTimeIntervalId = null;
     this.app = app;
     this.containerEl = containerEl;
     if (Array.isArray(datesOrStart)) {
@@ -356,11 +417,15 @@ var WeekViewRenderComponent = class {
     ).open();
   }
   render() {
+    if (this.currentTimeIntervalId !== null) {
+      window.clearInterval(this.currentTimeIntervalId);
+      this.currentTimeIntervalId = null;
+    }
     this.containerEl.empty();
     this.containerEl.addClass("fcp-week-view-wrapper");
     this.containerEl.style.setProperty("--fcp-num-days", this.dates.length.toString());
     const weekDates = this.dates;
-    const todayStr = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+    const todayStr = this.formatDateIso(/* @__PURE__ */ new Date());
     const headerRow = this.containerEl.createDiv("fcp-week-header");
     headerRow.createDiv("fcp-time-gutter-header");
     const daysHeaderGrid = headerRow.createDiv("fcp-week-days-header-grid");
@@ -472,7 +537,8 @@ var WeekViewRenderComponent = class {
     bottomLine.style.top = `${this.totalHours * this.hourHeight}px`;
     weekDates.forEach((date, colIndex) => {
       const dateStr = this.formatDateIso(date);
-      const colEl = columnsContainer.createDiv("fcp-day-column");
+      const isToday = dateStr === todayStr;
+      const colEl = columnsContainer.createDiv(`fcp-day-column ${isToday ? "is-today" : ""}`);
       colEl.dataset.date = dateStr;
       colEl.dataset.colIndex = colIndex.toString();
       let touchStartX = 0;
@@ -528,6 +594,10 @@ var WeekViewRenderComponent = class {
       const ro = new ResizeObserver(() => syncHeaderScrollbar());
       ro.observe(gridBody);
     }
+    this.updateCurrentTimeIndicator();
+    this.currentTimeIntervalId = window.setInterval(() => {
+      this.updateCurrentTimeIndicator();
+    }, 3e4);
   }
   /**
    * Notion Calendar-style Overlap Clustering & Multi-Column Layout Algorithm
@@ -1118,6 +1188,50 @@ var WeekViewRenderComponent = class {
       }
     });
   }
+  destroy() {
+    if (this.currentTimeIntervalId !== null) {
+      window.clearInterval(this.currentTimeIntervalId);
+      this.currentTimeIntervalId = null;
+    }
+    if (this.currentTimeEl) {
+      this.currentTimeEl.remove();
+      this.currentTimeEl = null;
+    }
+  }
+  updateCurrentTimeIndicator() {
+    if (!this.containerEl || !this.containerEl.isConnected) {
+      this.destroy();
+      return;
+    }
+    const todayStr = this.formatDateIso(/* @__PURE__ */ new Date());
+    const todayCol = this.containerEl.querySelector(`.fcp-day-column[data-date="${todayStr}"]`);
+    if (!todayCol) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.remove();
+        this.currentTimeEl = null;
+      }
+      return;
+    }
+    const now = /* @__PURE__ */ new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const startMinutes = this.startHour * 60;
+    const endMinutes = this.endHour * 60;
+    if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.style.display = "none";
+      }
+      return;
+    }
+    const topPx = (currentMinutes - startMinutes) * (this.hourHeight / 60);
+    if (!this.currentTimeEl || this.currentTimeEl.parentElement !== todayCol) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.remove();
+      }
+      this.currentTimeEl = todayCol.createDiv("fcp-current-time-indicator");
+    }
+    this.currentTimeEl.style.display = "block";
+    this.currentTimeEl.style.top = `${topPx}px`;
+  }
   escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
@@ -1126,39 +1240,649 @@ var WeekViewRenderComponent = class {
 };
 
 // src/views/MonthViewRender.ts
+var import_obsidian6 = require("obsidian");
+
+// src/views/MilestonesViewRender.ts
+var import_obsidian5 = require("obsidian");
+
+// src/views/milestones/MilestonesCategoryBlock.ts
+var import_obsidian4 = require("obsidian");
+
+// src/views/common/InlineEdit.ts
+function enableInlineEdit(el, initialValue, onCommit, onCancel) {
+  const parent = el.parentElement;
+  if (!parent)
+    return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = initialValue;
+  input.className = "fcp-ms-inline-input";
+  let committed = false;
+  const commit = async () => {
+    if (committed)
+      return;
+    committed = true;
+    const val = input.value.trim() || initialValue;
+    await onCommit(val);
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      input.blur();
+    } else if (e.key === "Escape") {
+      committed = true;
+      if (onCancel)
+        onCancel();
+    }
+  });
+  input.addEventListener("blur", () => {
+    commit();
+  });
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+// src/views/common/RadialProgress.ts
+function createRadialProgressEl(options) {
+  const size = options.size || 22;
+  const strokeWidth = options.strokeWidth || 3;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clampedRatio = Math.max(0, Math.min(1, isNaN(options.progressRatio) ? 0 : options.progressRatio));
+  const offset = circumference * (1 - clampedRatio);
+  const accent = options.accentColor || "var(--interactive-accent)";
+  const wrapper = document.createElement("div");
+  wrapper.className = `fcp-ms-radial-wrapper ${options.className || ""}`.trim();
+  wrapper.innerHTML = `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="fcp-ms-radial-svg">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="var(--background-modifier-border)" stroke-width="${strokeWidth}" />
+      <circle cx="${size / 2}" cy="${size / 2}" r="${radius}" fill="none" stroke="${accent}" stroke-width="${strokeWidth}"
+        stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+        transform="rotate(-90 ${size / 2} ${size / 2})"
+        style="transition: stroke-dashoffset 0.25s ease;"
+      />
+    </svg>
+    ${options.text !== void 0 ? `<span class="fcp-ms-radial-text">${options.text}</span>` : ""}
+  `;
+  return wrapper;
+}
+
+// src/views/milestones/MilestonesItemRow.ts
+var import_obsidian3 = require("obsidian");
+
+// src/views/milestones/MilestonesSubItemsList.ts
 var import_obsidian2 = require("obsidian");
+var MilestonesSubItemsList = class {
+  static render(container, cat, item, callbacks) {
+    const subItems = item.subItems || item.comments || [];
+    if (subItems.length === 0)
+      return;
+    const subItemsContainer = container.createDiv("fcp-ms-subitems-container");
+    subItems.forEach((subItem) => {
+      const row = subItemsContainer.createDiv("fcp-ms-subitem-row");
+      const bullet = row.createSpan("fcp-ms-subitem-bullet");
+      bullet.textContent = "\u2022";
+      const textEl = row.createSpan("fcp-ms-subitem-text");
+      textEl.textContent = subItem.text;
+      textEl.title = "Click to edit";
+      textEl.onclick = (e) => {
+        e.stopPropagation();
+        enableInlineEdit(textEl, subItem.text, async (newText) => {
+          subItem.text = newText;
+          await callbacks.onSave();
+          callbacks.onRefresh();
+        });
+      };
+      const delBtn = row.createSpan("fcp-ms-icon-action fcp-ms-del-subitem");
+      delBtn.title = "Delete";
+      (0, import_obsidian2.setIcon)(delBtn, "x");
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const updated = (item.subItems || item.comments || []).filter((s) => s.id !== subItem.id);
+        item.subItems = updated;
+        item.comments = updated;
+        await callbacks.onSave();
+        callbacks.onRefresh();
+      };
+    });
+  }
+  static addSubItem(item, callbacks, containerEl) {
+    if (!item.subItems) {
+      item.subItems = item.comments ? [...item.comments] : [];
+    }
+    const newSub = {
+      id: "sub-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+      text: "New item",
+      createdAt: Date.now()
+    };
+    item.subItems.push(newSub);
+    item.comments = item.subItems;
+    callbacks.onSave().then(() => {
+      callbacks.onRefresh();
+      setTimeout(() => {
+        const itemBlock = containerEl.querySelector(`.fcp-ms-item-block[data-id="${item.id}"]`);
+        if (itemBlock) {
+          const lastText = itemBlock.querySelector(".fcp-ms-subitem-row:last-child .fcp-ms-subitem-text");
+          if (lastText)
+            lastText.click();
+        }
+      }, 0);
+    });
+  }
+};
+
+// src/views/milestones/MilestonesItemRow.ts
+var MilestonesItemRow = class {
+  static render(container, cat, item, callbacks) {
+    const itemBlock = container.createDiv(`fcp-ms-item-block status-${item.status}`);
+    itemBlock.dataset.id = item.id;
+    const itemRow = itemBlock.createDiv("fcp-ms-item-row");
+    const checkBtn = itemRow.createSpan(`fcp-ms-check-btn status-${item.status}`);
+    if (item.status === "done") {
+      (0, import_obsidian3.setIcon)(checkBtn, "check");
+      checkBtn.title = "Completed (click to toggle, right-click to skip)";
+    } else if (item.status === "skipped") {
+      checkBtn.innerHTML = `<span class="fcp-ms-skipped-dot">\u{1F7E3}</span>`;
+      checkBtn.title = "Skipped / Low-Yield (Counts towards progress. Right-click to change)";
+    } else {
+      checkBtn.innerHTML = `<span class="fcp-ms-todo-dot"></span>`;
+      checkBtn.title = "To Do (click to complete, right-click to skip)";
+    }
+    checkBtn.onclick = async (e) => {
+      e.stopPropagation();
+      item.status = item.status === "done" ? "todo" : "done";
+      await callbacks.onSave();
+      callbacks.onRefresh();
+    };
+    const openMenu = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = new import_obsidian3.Menu();
+      menu.addItem(
+        (i) => i.setTitle("Mark as Done (\u2713)").setIcon("check").setChecked(item.status === "done").onClick(async () => {
+          item.status = "done";
+          await callbacks.onSave();
+          callbacks.onRefresh();
+        })
+      );
+      menu.addItem(
+        (i) => i.setTitle("Mark as Skipped (\u{1F7E3} Counts towards progress)").setIcon("circle-slash").setChecked(item.status === "skipped").onClick(async () => {
+          item.status = "skipped";
+          await callbacks.onSave();
+          callbacks.onRefresh();
+        })
+      );
+      menu.addItem(
+        (i) => i.setTitle("Mark as To Do (\u25CB)").setIcon("circle").setChecked(item.status === "todo").onClick(async () => {
+          item.status = "todo";
+          await callbacks.onSave();
+          callbacks.onRefresh();
+        })
+      );
+      menu.addSeparator();
+      menu.addItem(
+        (i) => i.setTitle("Add list item").setIcon("plus").onClick(() => {
+          MilestonesSubItemsList.addSubItem(item, callbacks, callbacks.rootContainer);
+        })
+      );
+      menu.addItem(
+        (i) => i.setTitle("Delete Milestone").setIcon("trash-2").onClick(async () => {
+          cat.items = cat.items.filter((i2) => i2.id !== item.id);
+          await callbacks.onSave();
+          callbacks.onRefresh();
+        })
+      );
+      menu.showAtMouseEvent(e);
+    };
+    itemRow.oncontextmenu = openMenu;
+    checkBtn.oncontextmenu = openMenu;
+    const titleEl = itemRow.createSpan("fcp-ms-item-title");
+    titleEl.textContent = item.title;
+    titleEl.title = "Click to edit title (Right-click for options)";
+    titleEl.onclick = (e) => {
+      e.stopPropagation();
+      enableInlineEdit(titleEl, item.title, async (newTitle) => {
+        item.title = newTitle;
+        await callbacks.onSave();
+        callbacks.onRefresh();
+      });
+    };
+    const itemActions = itemRow.createDiv("fcp-ms-item-actions");
+    const addSubBtn = itemActions.createSpan("fcp-ms-icon-action");
+    addSubBtn.title = "Add list item";
+    (0, import_obsidian3.setIcon)(addSubBtn, "plus");
+    addSubBtn.onclick = (e) => {
+      e.stopPropagation();
+      MilestonesSubItemsList.addSubItem(item, callbacks, callbacks.rootContainer);
+    };
+    const delItemBtn = itemActions.createSpan("fcp-ms-icon-action fcp-ms-action-danger");
+    delItemBtn.title = "Delete milestone";
+    (0, import_obsidian3.setIcon)(delItemBtn, "trash-2");
+    delItemBtn.onclick = async (e) => {
+      e.stopPropagation();
+      cat.items = cat.items.filter((i) => i.id !== item.id);
+      await callbacks.onSave();
+      callbacks.onRefresh();
+    };
+    MilestonesSubItemsList.render(itemBlock, cat, item, callbacks);
+  }
+};
+
+// src/views/milestones/MilestonesCategoryBlock.ts
+var MilestonesCategoryBlock = class {
+  static render(container, cat, callbacks) {
+    const isCollapsed = callbacks.isCollapsed;
+    const catBlock = container.createDiv(`fcp-ms-category-block ${isCollapsed ? "is-collapsed" : ""}`);
+    catBlock.dataset.id = cat.id;
+    const { total, completed, pct } = calculateCategoryProgress(cat);
+    const catHeader = catBlock.createDiv("fcp-ms-cat-header");
+    const chevronBtn = catHeader.createSpan("fcp-ms-chevron");
+    (0, import_obsidian4.setIcon)(chevronBtn, isCollapsed ? "chevron-right" : "chevron-down");
+    chevronBtn.onclick = (e) => {
+      e.stopPropagation();
+      callbacks.onToggleCollapse(cat.id);
+    };
+    const radialEl = createRadialProgressEl({
+      size: 22,
+      strokeWidth: 3,
+      progressRatio: total > 0 ? completed / total : 0,
+      text: `${pct}%`
+    });
+    radialEl.title = `${completed}/${total} completed (${pct}%)`;
+    catHeader.appendChild(radialEl);
+    const nameEl = catHeader.createSpan("fcp-ms-cat-name");
+    nameEl.textContent = cat.name;
+    nameEl.title = "Click to edit category name";
+    nameEl.onclick = (e) => {
+      e.stopPropagation();
+      enableInlineEdit(nameEl, cat.name, async (newName) => {
+        cat.name = newName;
+        await callbacks.onSave();
+        callbacks.onRefresh();
+      });
+    };
+    const catActions = catHeader.createDiv("fcp-ms-cat-actions");
+    const addMsBtn = catActions.createSpan("fcp-ms-icon-action");
+    addMsBtn.title = "Add milestone to this category";
+    (0, import_obsidian4.setIcon)(addMsBtn, "plus");
+    addMsBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (isCollapsed)
+        callbacks.onToggleCollapse(cat.id);
+      const itemsContainer = catBlock.querySelector(".fcp-ms-items-container");
+      if (itemsContainer) {
+        const input = itemsContainer.querySelector(".fcp-ms-add-input");
+        if (input)
+          input.focus();
+      }
+    };
+    const delCatBtn = catActions.createSpan("fcp-ms-icon-action fcp-ms-action-danger");
+    delCatBtn.title = "Delete category";
+    (0, import_obsidian4.setIcon)(delCatBtn, "trash-2");
+    delCatBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (cat.items.length > 0 && !confirm(`Delete category "${cat.name}" and its ${cat.items.length} milestone(s)?`)) {
+        return;
+      }
+      callbacks.onDeleteCategory(cat.id);
+    };
+    if (!isCollapsed) {
+      const itemsContainer = catBlock.createDiv("fcp-ms-items-container");
+      cat.items.forEach((item) => {
+        MilestonesItemRow.render(itemsContainer, cat, item, {
+          onSave: callbacks.onSave,
+          onRefresh: callbacks.onRefresh,
+          rootContainer: callbacks.rootContainer
+        });
+      });
+      const addRow = itemsContainer.createDiv("fcp-ms-add-row");
+      const addIcon = addRow.createSpan("fcp-ms-add-icon");
+      (0, import_obsidian4.setIcon)(addIcon, "plus");
+      const addInput = addRow.createEl("input", {
+        cls: "fcp-ms-add-input",
+        type: "text",
+        placeholder: "Add milestone..."
+      });
+      addInput.addEventListener("keydown", async (e) => {
+        if (e.key === "Enter") {
+          const val = addInput.value.trim();
+          if (val) {
+            const newItem = {
+              id: "ms-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+              title: val,
+              status: "todo",
+              subItems: [],
+              comments: [],
+              createdAt: Date.now()
+            };
+            cat.items.push(newItem);
+            await callbacks.onSave();
+            callbacks.onRefresh();
+            setTimeout(() => {
+              const freshBlock = callbacks.rootContainer.querySelector(`.fcp-ms-category-block[data-id="${cat.id}"]`);
+              if (freshBlock) {
+                const freshInput = freshBlock.querySelector(".fcp-ms-add-row .fcp-ms-add-input");
+                if (freshInput)
+                  freshInput.focus();
+              }
+            }, 0);
+          }
+        }
+      });
+      addRow.addEventListener("click", () => {
+        addInput.focus();
+      });
+    }
+  }
+};
+
+// src/views/MilestonesViewRender.ts
+var MilestonesViewRenderComponent = class {
+  constructor(app, containerEl, year, month, categories, callbacks) {
+    this.collapsedCategories = /* @__PURE__ */ new Set();
+    this.app = app;
+    this.containerEl = containerEl;
+    this.currentYear = year;
+    this.currentMonth = month;
+    this.categories = categories || [];
+    this.callbacks = callbacks;
+    this.render();
+  }
+  update(year, month, categories) {
+    this.currentYear = year;
+    this.currentMonth = month;
+    this.categories = categories || [];
+    this.render();
+  }
+  render() {
+    this.containerEl.empty();
+    this.containerEl.addClass("fcp-milestones-full-wrapper");
+    const catList = this.containerEl.createDiv("fcp-ms-categories-list");
+    this.categories.forEach((cat) => {
+      MilestonesCategoryBlock.render(catList, cat, {
+        onSave: () => this.callbacks.onSave(this.categories),
+        onRefresh: () => this.render(),
+        onToggleCollapse: (catId) => {
+          if (this.collapsedCategories.has(catId)) {
+            this.collapsedCategories.delete(catId);
+          } else {
+            this.collapsedCategories.add(catId);
+          }
+          this.render();
+        },
+        onDeleteCategory: async (catId) => {
+          this.categories = this.categories.filter((c) => c.id !== catId);
+          await this.callbacks.onSave(this.categories);
+          this.render();
+        },
+        isCollapsed: this.collapsedCategories.has(cat.id),
+        rootContainer: this.containerEl
+      });
+    });
+    this.renderAddCategoryRow(catList);
+  }
+  renderAddCategoryRow(parentEl) {
+    const addCatRow = parentEl.createDiv("fcp-ms-add-category-row");
+    const addCatIcon = addCatRow.createSpan("fcp-ms-add-icon");
+    (0, import_obsidian5.setIcon)(addCatIcon, "plus");
+    const addCatInput = addCatRow.createEl("input", {
+      cls: "fcp-ms-add-input",
+      type: "text",
+      placeholder: "Add category..."
+    });
+    addCatInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") {
+        const val = addCatInput.value.trim();
+        if (val) {
+          const newCat = {
+            id: "cat-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+            name: val,
+            items: []
+          };
+          this.categories.push(newCat);
+          await this.callbacks.onSave(this.categories);
+          this.render();
+        }
+      }
+    });
+    addCatRow.addEventListener("click", () => {
+      addCatInput.focus();
+    });
+  }
+};
+
+// src/views/statistics/StatisticsUtils.ts
+function aggregateMonthlyActivities(logs, year, month) {
+  const monthPrefix = `${year}-${(month + 1).toString().padStart(2, "0")}`;
+  const monthName = new Date(year, month, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric"
+  });
+  const activityMap = /* @__PURE__ */ new Map();
+  let grandTotalSeconds = 0;
+  const allDaysSet = /* @__PURE__ */ new Set();
+  logs.forEach((log) => {
+    if (log.type !== "work" || !log.date || !log.date.startsWith(monthPrefix))
+      return;
+    const rawTitle = (log.taskTitle || "").trim();
+    if (!rawTitle || rawTitle.toLowerCase() === "general focus")
+      return;
+    const lower = rawTitle.toLowerCase();
+    let displayTitle = rawTitle;
+    let normKey = lower;
+    if (log.taskId === "focus-drills" || lower === "drills" || lower.startsWith("[drill]") || lower.endsWith("drills") || lower.includes("drill:")) {
+      displayTitle = "Drills";
+      normKey = "drills";
+    } else if (log.taskId === "focus-flashcards" || lower === "flashcards" || lower.startsWith("[flashcard]") || lower.includes("flashcard")) {
+      displayTitle = "Flashcards";
+      normKey = "flashcards";
+    }
+    const secs = log.durationSeconds || 0;
+    if (secs <= 0)
+      return;
+    grandTotalSeconds += secs;
+    allDaysSet.add(log.date);
+    if (activityMap.has(normKey)) {
+      const item = activityMap.get(normKey);
+      item.totalSeconds += secs;
+      item.daysSet.add(log.date);
+    } else {
+      const set = /* @__PURE__ */ new Set();
+      set.add(log.date);
+      activityMap.set(normKey, {
+        displayTitle,
+        totalSeconds: secs,
+        daysSet: set
+      });
+    }
+  });
+  const grandTotalHours = grandTotalSeconds / 3600;
+  const rawActivities = Array.from(activityMap.values()).map((act) => ({
+    displayTitle: act.displayTitle,
+    totalHours: act.totalSeconds / 3600,
+    totalSeconds: act.totalSeconds,
+    activeDays: act.daysSet.size
+  })).sort((a, b) => b.totalHours - a.totalHours);
+  const activities = rawActivities.map((act, index) => ({
+    ...act,
+    color: getTonalColor(index, rawActivities.length)
+  }));
+  return {
+    monthPrefix,
+    monthName,
+    grandTotalSeconds,
+    grandTotalHours,
+    activeDaysCount: allDaysSet.size,
+    activities
+  };
+}
+
+// src/views/statistics/StatisticsDistributionBar.ts
+var StatisticsDistributionBar = class {
+  static render(container, data) {
+    if (data.activities.length === 0 || data.grandTotalSeconds === 0)
+      return;
+    const barContainer = container.createDiv("fcp-stacked-bar fcp-stats-full-bar");
+    data.activities.forEach((act) => {
+      const pct = act.totalHours / (data.grandTotalHours || 1) * 100;
+      const segment = barContainer.createDiv("fcp-stacked-segment");
+      segment.style.backgroundColor = act.color;
+      segment.style.flex = `${pct}`;
+      segment.title = `${act.displayTitle}: ${formatHoursAndMinutes(act.totalHours)} (${pct.toFixed(0)}%)`;
+    });
+  }
+};
+
+// src/views/statistics/StatisticsBreakdownList.ts
+var StatisticsBreakdownList = class {
+  static render(container, data) {
+    if (data.activities.length === 0 || data.grandTotalSeconds === 0)
+      return;
+    const list = container.createDiv("fcp-stats-detail-list");
+    data.activities.forEach((act) => {
+      const pct = act.totalHours / (data.grandTotalHours || 1) * 100;
+      const item = list.createDiv("fcp-stats-detail-item");
+      item.innerHTML = `
+        <div class="fcp-stats-item-left">
+          <span class="fcp-legend-dot" style="background-color: ${act.color};"></span>
+          <span class="fcp-stats-item-name" title="${this.escapeHtml(act.displayTitle)}">${this.escapeHtml(act.displayTitle)}</span>
+        </div>
+        <div class="fcp-stats-item-right">
+          <span class="fcp-stats-item-hours">${formatHoursAndMinutes(act.totalHours)}</span>
+          <span class="fcp-stats-item-pct">${pct.toFixed(0)}%</span>
+        </div>
+      `;
+    });
+  }
+  static escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+};
+
+// src/views/StatisticsViewRender.ts
+var StatisticsViewRenderComponent = class {
+  constructor(containerEl, year, month, pomoLogs) {
+    this.containerEl = containerEl;
+    this.currentYear = year;
+    this.currentMonth = month;
+    this.pomoLogs = pomoLogs;
+    this.render();
+  }
+  update(year, month, pomoLogs) {
+    this.currentYear = year;
+    this.currentMonth = month;
+    this.pomoLogs = pomoLogs;
+    this.render();
+  }
+  render() {
+    this.containerEl.empty();
+    this.containerEl.addClass("fcp-stats-full-wrapper");
+    const data = aggregateMonthlyActivities(this.pomoLogs, this.currentYear, this.currentMonth);
+    if (data.activities.length === 0 || data.grandTotalSeconds === 0) {
+      const emptyDiv = this.containerEl.createDiv("fcp-stats-empty");
+      emptyDiv.textContent = "No focus sessions recorded this month.";
+      return;
+    }
+    const content = this.containerEl.createDiv("fcp-stats-content");
+    StatisticsDistributionBar.render(content, data);
+    StatisticsBreakdownList.render(content, data);
+  }
+};
+
+// src/views/MonthViewRender.ts
 var MonthViewRenderComponent = class {
-  constructor(containerEl, year, month, entries, pomoLogs, dailyHoursMap, callbacks) {
+  constructor(app, containerEl, year, month, entries, pomoLogs, dailyHoursMap, milestones, callbacks, initialSubView = "calendar") {
+    this.milestonesComponent = null;
+    this.statsComponent = null;
+    this.app = app;
     this.containerEl = containerEl;
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
     this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
+    this.milestones = milestones;
     this.callbacks = callbacks;
+    this.subView = initialSubView === "calendar" ? "calendar" : "milestones";
     this.render();
   }
-  update(year, month, entries, pomoLogs, dailyHoursMap) {
+  update(year, month, entries, pomoLogs, dailyHoursMap, milestones) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
     this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
+    this.milestones = milestones;
     this.render();
-  }
-  getTaskColor(title) {
-    const normalized = title.toLowerCase().trim();
-    let hash = 0;
-    for (let i = 0; i < normalized.length; i++) {
-      hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 68%, 52%)`;
   }
   render() {
     this.containerEl.empty();
     this.containerEl.addClass("fcp-month-view-wrapper");
-    const layoutContainer = this.containerEl.createDiv("fcp-month-layout-container");
+    const subNav = this.containerEl.createDiv("fcp-month-subnav");
+    const leftGroup = subNav.createDiv("fcp-subnav-group");
+    const addSubBtn = (mode, iconId, title) => {
+      const btn = leftGroup.createEl("button", {
+        cls: `fcp-subnav-btn ${this.subView === mode ? "active" : ""}`,
+        ariaLabel: title
+      });
+      (0, import_obsidian6.setIcon)(btn, iconId);
+      btn.title = title;
+      btn.onclick = () => {
+        var _a, _b;
+        if (this.subView !== mode) {
+          this.subView = mode;
+          (_b = (_a = this.callbacks).onSubViewChange) == null ? void 0 : _b.call(_a, mode);
+          this.render();
+        }
+      };
+      return btn;
+    };
+    addSubBtn("calendar", "calendar", "Month Days");
+    addSubBtn("milestones", "milestone", "Statistics & Milestones");
+    const rightGroup = subNav.createDiv("fcp-subnav-right");
+    let totalHours = 0;
+    for (const h of this.dailyHoursMap.values())
+      totalHours += h;
+    if (totalHours > 0) {
+      const metaEl = rightGroup.createSpan("fcp-subnav-meta");
+      metaEl.textContent = formatHoursAndMinutes(totalHours);
+      metaEl.title = "Total focus hours this month";
+    }
+    const contentArea = this.containerEl.createDiv("fcp-month-content-area");
+    if (this.subView === "calendar") {
+      this.renderCalendarGrid(contentArea);
+    } else {
+      this.renderFusedPanel(contentArea);
+    }
+  }
+  renderFusedPanel(container) {
+    const splitLayout = container.createDiv("fcp-month-fused-panel");
+    const leftPane = splitLayout.createDiv("fcp-month-stats-pane");
+    this.statsComponent = new StatisticsViewRenderComponent(
+      leftPane,
+      this.currentYear,
+      this.currentMonth,
+      this.pomoLogs
+    );
+    const rightPane = splitLayout.createDiv("fcp-month-milestones-pane");
+    this.milestonesComponent = new MilestonesViewRenderComponent(
+      this.app,
+      rightPane,
+      this.currentYear,
+      this.currentMonth,
+      this.milestones,
+      {
+        onSave: async (cats) => {
+          this.milestones = cats;
+          await this.callbacks.onSaveMilestones(cats);
+        }
+      }
+    );
+  }
+  renderCalendarGrid(container) {
+    const layoutContainer = container.createDiv("fcp-month-layout-container");
     const gridPanel = layoutContainer.createDiv("fcp-month-grid-panel");
     const weekdaysHeader = gridPanel.createDiv("fcp-month-weekdays-header");
     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -1175,7 +1899,7 @@ var MonthViewRenderComponent = class {
     const daysInPrevMonth = new Date(this.currentYear, this.currentMonth, 0).getDate();
     const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
     const numRows = totalCells / 7;
-    if (import_obsidian2.Platform.isMobile) {
+    if (import_obsidian6.Platform.isMobile) {
       monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(90px, auto))`;
     } else {
       monthGrid.style.gridTemplateRows = `repeat(${numRows}, minmax(0, 1fr))`;
@@ -1203,9 +1927,9 @@ var MonthViewRenderComponent = class {
       const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
       if (dailyHours > 0) {
         const intensity = Math.min(1, dailyHours / 8);
-        const alpha = 0.12 + intensity * 0.58;
-        cellEl.style.backgroundColor = `rgba(59, 130, 246, ${alpha.toFixed(2)})`;
-        cellEl.style.borderColor = `rgba(59, 130, 246, ${(alpha + 0.2).toFixed(2)})`;
+        const alpha = 0.1 + intensity * 0.4;
+        cellEl.style.backgroundColor = `color-mix(in srgb, var(--interactive-accent) ${(alpha * 100).toFixed(0)}%, transparent)`;
+        cellEl.style.borderColor = `color-mix(in srgb, var(--interactive-accent) ${((alpha + 0.15) * 100).toFixed(0)}%, transparent)`;
       }
       const cellHeader = cellEl.createDiv("fcp-month-cell-header");
       cellHeader.textContent = dayNumber.toString();
@@ -1241,11 +1965,9 @@ var MonthViewRenderComponent = class {
       }
       if (dailyHours > 0) {
         const hoursTag = cellEl.createDiv("fcp-month-day-hours");
-        const formattedHours = dailyHours % 1 === 0 ? `${dailyHours} Hrs` : `${dailyHours.toFixed(1)} Hrs`;
-        hoursTag.textContent = formattedHours;
+        hoursTag.textContent = formatHoursAndMinutes(dailyHours);
       }
     }
-    this.renderBreakdownPanel(layoutContainer);
     setTimeout(() => {
       const scrollbarWidth = monthGrid.offsetWidth - monthGrid.clientWidth;
       if (scrollbarWidth > 0) {
@@ -1254,81 +1976,6 @@ var MonthViewRenderComponent = class {
         weekdaysHeader.style.paddingRight = "0px";
       }
     }, 0);
-  }
-  renderBreakdownPanel(parentEl) {
-    const breakdownPanel = parentEl.createDiv("fcp-month-breakdown-panel");
-    const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, "0")}`;
-    const activityMap = /* @__PURE__ */ new Map();
-    let grandTotalSeconds = 0;
-    this.pomoLogs.forEach((log) => {
-      if (log.type !== "work" || !log.date || !log.date.startsWith(monthPrefix))
-        return;
-      let rawTitle = (log.taskTitle || "").trim();
-      if (!rawTitle || rawTitle.toLowerCase() === "general focus")
-        return;
-      const lower = rawTitle.toLowerCase();
-      let displayTitle = rawTitle;
-      let normKey = lower;
-      if (log.taskId === "focus-drills" || lower === "drills" || lower.startsWith("[drill]") || lower.endsWith("drills") || lower.includes("drill:")) {
-        displayTitle = "Drills";
-        normKey = "drills";
-      } else if (log.taskId === "focus-flashcards" || lower === "flashcards" || lower.startsWith("[flashcard]") || lower.includes("flashcard")) {
-        displayTitle = "Flashcards";
-        normKey = "flashcards";
-      }
-      const secs = log.durationSeconds || 0;
-      if (secs <= 0)
-        return;
-      grandTotalSeconds += secs;
-      if (activityMap.has(normKey)) {
-        activityMap.get(normKey).totalSeconds += secs;
-      } else {
-        activityMap.set(normKey, {
-          displayTitle,
-          totalSeconds: secs,
-          color: this.getTaskColor(displayTitle)
-        });
-      }
-    });
-    const grandTotalHours = grandTotalSeconds / 3600;
-    const activities = Array.from(activityMap.values()).map((act) => ({
-      displayTitle: act.displayTitle,
-      totalHours: act.totalSeconds / 3600,
-      color: act.color
-    })).sort((a, b) => b.totalHours - a.totalHours);
-    const header = breakdownPanel.createDiv("fcp-breakdown-header");
-    header.innerHTML = `
-      <div class="fcp-breakdown-title">STATISTICS</div>
-      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
-    `;
-    if (activities.length === 0 || grandTotalSeconds === 0) {
-      const emptyMsg = breakdownPanel.createDiv("fcp-breakdown-empty");
-      emptyMsg.textContent = "No focus time recorded this month.";
-      return;
-    }
-    const barContainer = breakdownPanel.createDiv("fcp-stacked-bar");
-    activities.forEach((act) => {
-      const pct = act.totalHours / (grandTotalHours || 1) * 100;
-      const segment = barContainer.createDiv("fcp-stacked-segment");
-      segment.style.backgroundColor = act.color;
-      segment.style.flex = `${pct}`;
-      segment.title = `${act.displayTitle}: ${act.totalHours.toFixed(1)}h (${pct.toFixed(0)}%)`;
-    });
-    const legend = breakdownPanel.createDiv("fcp-breakdown-legend");
-    activities.forEach((act) => {
-      const pct = act.totalHours / (grandTotalHours || 1) * 100;
-      const item = legend.createDiv("fcp-legend-item");
-      item.innerHTML = `
-        <div class="fcp-legend-left">
-          <span class="fcp-legend-dot" style="background-color: ${act.color};"></span>
-          <span class="fcp-legend-name" title="${this.escapeHtml(act.displayTitle)}">${this.escapeHtml(act.displayTitle)}</span>
-        </div>
-        <div class="fcp-legend-right">
-          <span class="fcp-legend-hours">${act.totalHours.toFixed(1)}h</span>
-          <span class="fcp-legend-pct">${pct.toFixed(0)}%</span>
-        </div>
-      `;
-    });
   }
   escapeHtml(str) {
     const div = document.createElement("div");
@@ -2024,8 +2671,8 @@ var TimelineViewRenderComponent = class {
 };
 
 // src/views/TimeWindowModal.ts
-var import_obsidian3 = require("obsidian");
-var TimeWindowModal = class extends import_obsidian3.Modal {
+var import_obsidian7 = require("obsidian");
+var TimeWindowModal = class extends import_obsidian7.Modal {
   constructor(app, windowData, onSave, onDelete) {
     super(app);
     this.isNew = !windowData || !windowData.id;
@@ -2043,27 +2690,27 @@ var TimeWindowModal = class extends import_obsidian3.Modal {
     let endDateVal = this.windowData.endDate || new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString().substring(0, 10);
     let colorVal = this.windowData.color || "indigo";
     let descVal = this.windowData.description || "";
-    new import_obsidian3.Setting(contentEl).setName("Title").setDesc('e.g. "Third Year Lessons", "First Exam Session"').addText((text) => text.setPlaceholder("Window title...").setValue(titleVal).onChange((v) => {
+    new import_obsidian7.Setting(contentEl).setName("Title").setDesc('e.g. "Third Year Lessons", "First Exam Session"').addText((text) => text.setPlaceholder("Window title...").setValue(titleVal).onChange((v) => {
       titleVal = v;
     }));
-    new import_obsidian3.Setting(contentEl).setName("Start Date").setDesc("Beginning of this time period (YYYY-MM-DD)").addText((text) => {
+    new import_obsidian7.Setting(contentEl).setName("Start Date").setDesc("Beginning of this time period (YYYY-MM-DD)").addText((text) => {
       text.inputEl.type = "date";
       text.setValue(startDateVal);
       text.onChange((v) => {
         startDateVal = v;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("End Date").setDesc("End of this time period (YYYY-MM-DD)").addText((text) => {
+    new import_obsidian7.Setting(contentEl).setName("End Date").setDesc("End of this time period (YYYY-MM-DD)").addText((text) => {
       text.inputEl.type = "date";
       text.setValue(endDateVal);
       text.onChange((v) => {
         endDateVal = v;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("Color Accent").setDesc("Visual color theme for this window banner.").addDropdown((drop) => drop.addOption("indigo", "Indigo").addOption("emerald", "Emerald").addOption("amber", "Amber / Gold").addOption("rose", "Rose").addOption("cyan", "Cyan").addOption("purple", "Purple").setValue(colorVal).onChange((v) => {
+    new import_obsidian7.Setting(contentEl).setName("Color Accent").setDesc("Visual color theme for this window banner.").addDropdown((drop) => drop.addOption("indigo", "Indigo").addOption("emerald", "Emerald").addOption("amber", "Amber / Gold").addOption("rose", "Rose").addOption("cyan", "Cyan").addOption("purple", "Purple").setValue(colorVal).onChange((v) => {
       colorVal = v;
     }));
-    new import_obsidian3.Setting(contentEl).setName("Description / Notes").setDesc("Optional notes or syllabus details.").addTextArea((text) => {
+    new import_obsidian7.Setting(contentEl).setName("Description / Notes").setDesc("Optional notes or syllabus details.").addTextArea((text) => {
       text.setPlaceholder("Enter details...").setValue(descVal).onChange((v) => {
         descVal = v;
       });
@@ -2124,10 +2771,11 @@ var TimeWindowModal = class extends import_obsidian3.Modal {
 
 // src/views/CalendarView.ts
 var VIEW_TYPE_FOCUS_CALENDAR = "focus-calendar-pomodoro-view";
-var FocusCalendarView = class extends import_obsidian4.ItemView {
+var FocusCalendarView = class extends import_obsidian8.ItemView {
   constructor(leaf, storage, pomodoro) {
     super(leaf);
     this.viewMode = "week";
+    this.monthSubView = "calendar";
     this.currentDate = /* @__PURE__ */ new Date();
     this.headerComponent = null;
     this.weekComponent = null;
@@ -2138,6 +2786,7 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
     this.entries = [];
     this.pomoLogs = [];
     this.windows = [];
+    this.milestones = [];
     this.storage = storage;
     this.pomodoro = pomodoro;
   }
@@ -2189,6 +2838,8 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
     }
     this.entries = Array.from(entryMap.values());
     this.pomoLogs = Array.from(logMap.values());
+    const currentYearMonth = this.getYearMonthString(targetDate);
+    this.milestones = await this.storage.loadMilestonesForMonth(currentYearMonth);
   }
   renderView() {
     const container = this.contentEl;
@@ -2196,7 +2847,9 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
     container.addClass("fcp-main-container");
     const navBar = container.createDiv("fcp-nav-bar");
     const leftNav = navBar.createDiv("fcp-nav-left");
-    const todayBtn = leftNav.createEl("button", { cls: "fcp-btn", text: "TODAY" });
+    const todayBtn = leftNav.createEl("button", { cls: "fcp-icon-btn fcp-today-btn", ariaLabel: "Today" });
+    (0, import_obsidian8.setIcon)(todayBtn, "calendar-check");
+    todayBtn.title = "Today";
     todayBtn.onclick = async () => {
       var _a;
       if (this.viewMode === "timeline") {
@@ -2250,40 +2903,26 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
       dateTitle.textContent = "TIMELINE";
     }
     const modeSwitch = navBar.createDiv("fcp-mode-switch");
-    const weekBtn = modeSwitch.createEl("button", {
-      cls: `fcp-switch-btn ${this.viewMode === "week" ? "active" : ""}`,
-      text: this.isMobileWeekView() ? "3-DAY" : "WEEK"
-    });
-    weekBtn.onclick = async () => {
-      if (this.viewMode !== "week") {
-        this.viewMode = "week";
-        await this.refreshData();
-        this.renderView();
-      }
+    const addModeBtn = (mode, iconId, titleText) => {
+      const btn = modeSwitch.createEl("button", {
+        cls: `fcp-switch-btn ${this.viewMode === mode ? "active" : ""}`,
+        ariaLabel: titleText
+      });
+      (0, import_obsidian8.setIcon)(btn, iconId);
+      btn.title = titleText;
+      btn.onclick = async () => {
+        if (this.viewMode !== mode) {
+          this.viewMode = mode;
+          await this.refreshData();
+          this.renderView();
+        }
+      };
+      return btn;
     };
-    const monthBtn = modeSwitch.createEl("button", {
-      cls: `fcp-switch-btn ${this.viewMode === "month" ? "active" : ""}`,
-      text: "MONTH"
-    });
-    monthBtn.onclick = async () => {
-      if (this.viewMode !== "month") {
-        this.viewMode = "month";
-        await this.refreshData();
-        this.renderView();
-      }
-    };
-    const timelineBtn = modeSwitch.createEl("button", {
-      cls: `fcp-switch-btn ${this.viewMode === "timeline" ? "active" : ""}`,
-      text: "TIMELINE"
-    });
-    timelineBtn.onclick = async () => {
-      if (this.viewMode !== "timeline") {
-        this.viewMode = "timeline";
-        await this.refreshData();
-        this.renderView();
-      }
-    };
-    if (this.viewMode !== "timeline") {
+    addModeBtn("week", "calendar-range", this.isMobileWeekView() ? "3-Day View" : "Week View");
+    addModeBtn("month", "calendar", "Month View");
+    addModeBtn("timeline", "git-commit-horizontal", "Timeline");
+    if (this.viewMode === "week") {
       const pomoHeaderContainer = container.createDiv("fcp-header-slot");
       const totalHours = this.calculateTotalHours();
       this.headerComponent = new PomodoroHeaderComponent(
@@ -2296,6 +2935,10 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
       this.headerComponent = null;
     }
     const viewAreaContainer = container.createDiv("fcp-view-area");
+    if (this.weekComponent) {
+      this.weekComponent.destroy();
+      this.weekComponent = null;
+    }
     if (this.viewMode === "week") {
       const dates = this.getActiveWeekViewDates();
       this.weekComponent = new WeekViewRenderComponent(
@@ -2369,13 +3012,16 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
         this.windows
       );
     } else if (this.viewMode === "month") {
+      const ym = this.getYearMonthString(this.currentDate);
       this.monthComponent = new MonthViewRenderComponent(
+        this.app,
         viewAreaContainer,
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
         this.pomoLogs,
         this.buildDailyHoursMap(),
+        this.milestones,
         {
           onDayClick: async (dateIso) => {
             this.currentDate = /* @__PURE__ */ new Date(dateIso + "T12:00:00");
@@ -2399,8 +3045,16 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
               },
               this.windows
             ).open();
+          },
+          onSaveMilestones: async (cats) => {
+            this.milestones = cats;
+            await this.storage.saveMilestonesForMonth(ym, cats);
+          },
+          onSubViewChange: (subView) => {
+            this.monthSubView = subView;
           }
-        }
+        },
+        this.monthSubView
       );
     } else {
       this.timelineComponent = new TimelineViewRenderComponent(
@@ -2531,7 +3185,7 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
     return map;
   }
   isMobileWeekView() {
-    return import_obsidian4.Platform.isMobile || (this.contentEl ? this.contentEl.clientWidth <= 680 : false);
+    return import_obsidian8.Platform.isMobile || (this.contentEl ? this.contentEl.clientWidth <= 680 : false);
   }
   getActiveWeekViewDates() {
     if (this.isMobileWeekView()) {
@@ -2609,10 +3263,21 @@ var FocusCalendarView = class extends import_obsidian4.ItemView {
     const m = (d.getMonth() + 1).toString().padStart(2, "0");
     return `${y}-${m}`;
   }
+  async onClose() {
+    if (this.weekComponent) {
+      this.weekComponent.destroy();
+      this.weekComponent = null;
+    }
+    this.monthComponent = null;
+    this.milestonesComponent = null;
+    this.statsComponent = null;
+    this.timelineComponent = null;
+    this.headerComponent = null;
+  }
 };
 
 // src/storage.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 var StorageManager = class {
   constructor(app, settingsGetter) {
     this.isLocalSaving = false;
@@ -2620,7 +3285,7 @@ var StorageManager = class {
     this.settingsGetter = settingsGetter;
   }
   get dataFolder() {
-    return (0, import_obsidian5.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
+    return (0, import_obsidian9.normalizePath)(this.settingsGetter().dataDirectory || "calendar-data");
   }
   async ensureDataFolderExists() {
     const folderPath = this.dataFolder;
@@ -2630,13 +3295,39 @@ var StorageManager = class {
     }
   }
   getMonthFilePath(yearMonth) {
-    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
+    return (0, import_obsidian9.normalizePath)(`${this.dataFolder}/entries-${yearMonth}.json`);
   }
   getPomodoroLogFilePath(yearMonth) {
-    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
+    return (0, import_obsidian9.normalizePath)(`${this.dataFolder}/focus-logs-${yearMonth}.json`);
   }
   getWindowsFilePath() {
-    return (0, import_obsidian5.normalizePath)(`${this.dataFolder}/windows.json`);
+    return (0, import_obsidian9.normalizePath)(`${this.dataFolder}/windows.json`);
+  }
+  getMilestonesFilePath(yearMonth) {
+    return (0, import_obsidian9.normalizePath)(`${this.dataFolder}/milestones-${yearMonth}.json`);
+  }
+  async loadMilestonesForMonth(yearMonth) {
+    await this.ensureDataFolderExists();
+    const path = this.getMilestonesFilePath(yearMonth);
+    try {
+      if (!await this.app.vault.adapter.exists(path))
+        return [];
+      const content = await this.app.vault.adapter.read(path);
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error(`Failed to load milestones for ${yearMonth}:`, e);
+      return [];
+    }
+  }
+  async saveMilestonesForMonth(yearMonth, categories) {
+    await this.ensureDataFolderExists();
+    const path = this.getMilestonesFilePath(yearMonth);
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, JSON.stringify(categories, null, 2));
+    setTimeout(() => {
+      this.isLocalSaving = false;
+    }, 500);
   }
   async loadTimeWindows() {
     await this.ensureDataFolderExists();
@@ -2791,7 +3482,7 @@ var StorageManager = class {
 };
 
 // src/pomodoro.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 var PomodoroManager = class {
   constructor(settingsGetter, onStateChange, onSessionComplete, playAudioCallback, onBreakStartCallback) {
     this.mode = "work";
@@ -2854,7 +3545,7 @@ var PomodoroManager = class {
     this.focusedTask = task;
     if (!task && this.mode === "work" && this.isRunning) {
       this.pause();
-      new import_obsidian6.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
+      new import_obsidian10.Notice("\u23F8\uFE0F Pomodoro timer paused: Task focus cleared.", 3e3);
     }
     this.notifyState();
   }
@@ -2865,7 +3556,7 @@ var PomodoroManager = class {
     if (this.isRunning)
       return true;
     if (this.mode === "work" && !this.focusedTask) {
-      new import_obsidian6.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
+      new import_obsidian10.Notice("\u26A0\uFE0F Select a task from the calendar before starting the Pomodoro timer!", 4e3);
       return false;
     }
     this.isRunning = true;
@@ -2991,8 +3682,8 @@ var PomodoroManager = class {
 };
 
 // src/settings.ts
-var import_obsidian7 = require("obsidian");
-var FocusCalendarSettingTab = class extends import_obsidian7.PluginSettingTab {
+var import_obsidian11 = require("obsidian");
+var FocusCalendarSettingTab = class extends import_obsidian11.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -3002,7 +3693,7 @@ var FocusCalendarSettingTab = class extends import_obsidian7.PluginSettingTab {
     containerEl.empty();
     containerEl.createEl("h2", { text: "Calendar & Focus Settings" });
     containerEl.createEl("h3", { text: "Pomodoro Timer" });
-    new import_obsidian7.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("Work Duration (minutes)").setDesc("Length of work pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("40").setValue(this.plugin.settings.workDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.workDurationMinutes = val;
@@ -3010,7 +3701,7 @@ var FocusCalendarSettingTab = class extends import_obsidian7.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian7.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("Break Duration (minutes)").setDesc("Length of break pomodoro sessions in minutes.").addText((text) => text.setPlaceholder("10").setValue(this.plugin.settings.breakDurationMinutes.toString()).onChange(async (value) => {
       const val = parseInt(value, 10);
       if (!isNaN(val) && val > 0) {
         this.plugin.settings.breakDurationMinutes = val;
@@ -3018,41 +3709,41 @@ var FocusCalendarSettingTab = class extends import_obsidian7.PluginSettingTab {
         this.plugin.pomodoro.notifySettingsUpdated();
       }
     }));
-    new import_obsidian7.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("Auto-Start Break").setDesc("Automatically start break timer when a work pomodoro session completes.").addToggle((toggle) => toggle.setValue(this.plugin.settings.autoStartBreak).onChange(async (value) => {
       this.plugin.settings.autoStartBreak = value;
       await this.plugin.saveSettings();
     }));
     containerEl.createEl("h3", { text: "Audio Notifications" });
-    const focusSoundSetting = new import_obsidian7.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
+    const focusSoundSetting = new import_obsidian11.Setting(containerEl).setName("Focus Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when focus/work time ends and break starts (e.g. Sounds/bell.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/bell.mp3").setValue(this.plugin.settings.focusEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.focusEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Focus completion sound").onClick(async () => {
       const path = (this.plugin.settings.focusEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian7.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian11.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian7.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian11.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
-    const breakSoundSetting = new import_obsidian7.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
+    const breakSoundSetting = new import_obsidian11.Setting(containerEl).setName("Break Completed Sound (Vault MP3 Path)").setDesc("Audio file in your vault played when break time ends and focus starts (e.g. Sounds/chime.mp3). Leave blank for no sound.").addText((text) => text.setPlaceholder("Sounds/chime.mp3").setValue(this.plugin.settings.breakEndSoundPath || "").onChange(async (value) => {
       this.plugin.settings.breakEndSoundPath = value.trim();
       await this.plugin.saveSettings();
     })).addButton((button) => button.setButtonText("\u{1F50A} Test").setTooltip("Play preview of the Break completion sound").onClick(async () => {
       const path = (this.plugin.settings.breakEndSoundPath || "").trim();
       if (!path) {
-        new import_obsidian7.Notice("\u26A0\uFE0F No sound file path specified.");
+        new import_obsidian11.Notice("\u26A0\uFE0F No sound file path specified.");
         return;
       }
       const ok = await this.plugin.playVaultAudio(path, true);
       if (ok) {
-        new import_obsidian7.Notice(`\u25B6\uFE0F Playing: ${path}`);
+        new import_obsidian11.Notice(`\u25B6\uFE0F Playing: ${path}`);
       }
     }));
     containerEl.createEl("h3", { text: "Storage" });
-    new import_obsidian7.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
+    new import_obsidian11.Setting(containerEl).setName("Data Storage Directory").setDesc("Folder path in your vault where calendar JSON data files are saved.").addText((text) => text.setPlaceholder("calendar-data").setValue(this.plugin.settings.dataDirectory).onChange(async (value) => {
       this.plugin.settings.dataDirectory = value.trim() || "calendar-data";
       await this.plugin.saveSettings();
     }));
@@ -3068,7 +3759,7 @@ var DEFAULT_SETTINGS = {
   focusEndSoundPath: "",
   breakEndSoundPath: ""
 };
-var FocusCalendarPlugin = class extends import_obsidian8.Plugin {
+var FocusCalendarPlugin = class extends import_obsidian12.Plugin {
   constructor() {
     super(...arguments);
     this.settings = DEFAULT_SETTINGS;
@@ -3246,7 +3937,7 @@ var FocusCalendarPlugin = class extends import_obsidian8.Plugin {
   async playVaultAudio(filePath, showNoticeOnFail = false) {
     try {
       const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (file instanceof import_obsidian8.TFile) {
+      if (file instanceof import_obsidian12.TFile) {
         const resourcePath = this.app.vault.getResourcePath(file);
         const audio = new Audio(resourcePath);
         audio.volume = 0.5;
@@ -3256,14 +3947,14 @@ var FocusCalendarPlugin = class extends import_obsidian8.Plugin {
         const msg = `Focus Calendar: Sound file not found at path: "${filePath}"`;
         console.warn(msg);
         if (showNoticeOnFail) {
-          new import_obsidian8.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
+          new import_obsidian12.Notice(`\u26A0\uFE0F ${msg}`, 4e3);
         }
         return false;
       }
     } catch (err) {
       console.error("Focus Calendar: Failed to play audio file from vault", err);
       if (showNoticeOnFail) {
-        new import_obsidian8.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
+        new import_obsidian12.Notice(`\u274C Failed to play audio file: ${filePath}`, 4e3);
       }
       return false;
     }

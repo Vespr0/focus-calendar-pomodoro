@@ -1,5 +1,5 @@
 import { App, normalizePath } from 'obsidian';
-import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings, TimeWindow } from './types';
+import { CalendarEntry, PomodoroLogSession, FocusCalendarSettings, TimeWindow, MilestoneCategory } from './types';
 
 export class StorageManager {
   private app: App;
@@ -33,6 +33,32 @@ export class StorageManager {
 
   private getWindowsFilePath(): string {
     return normalizePath(`${this.dataFolder}/windows.json`);
+  }
+
+  private getMilestonesFilePath(yearMonth: string): string {
+    return normalizePath(`${this.dataFolder}/milestones-${yearMonth}.json`);
+  }
+
+  public async loadMilestonesForMonth(yearMonth: string): Promise<MilestoneCategory[]> {
+    await this.ensureDataFolderExists();
+    const path = this.getMilestonesFilePath(yearMonth);
+    try {
+      if (!(await this.app.vault.adapter.exists(path))) return [];
+      const content = await this.app.vault.adapter.read(path);
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? (parsed as MilestoneCategory[]) : [];
+    } catch (e) {
+      console.error(`Failed to load milestones for ${yearMonth}:`, e);
+      return [];
+    }
+  }
+
+  public async saveMilestonesForMonth(yearMonth: string, categories: MilestoneCategory[]): Promise<void> {
+    await this.ensureDataFolderExists();
+    const path = this.getMilestonesFilePath(yearMonth);
+    this.isLocalSaving = true;
+    await this.app.vault.adapter.write(path, JSON.stringify(categories, null, 2));
+    setTimeout(() => { this.isLocalSaving = false; }, 500);
   }
 
   public async loadTimeWindows(): Promise<TimeWindow[]> {

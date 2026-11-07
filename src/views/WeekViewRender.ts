@@ -202,6 +202,9 @@ export class WeekViewRenderComponent {
   private readonly hourHeight = 52; // pixels per hour
   private readonly slotHeight = 26; // pixels per 30 minutes (52 / 2)
 
+  private currentTimeEl: HTMLElement | null = null;
+  private currentTimeIntervalId: number | null = null;
+
   constructor(
     app: App,
     containerEl: HTMLElement,
@@ -280,13 +283,18 @@ export class WeekViewRenderComponent {
   }
 
   private render() {
+    if (this.currentTimeIntervalId !== null) {
+      window.clearInterval(this.currentTimeIntervalId);
+      this.currentTimeIntervalId = null;
+    }
+
     this.containerEl.empty();
     this.containerEl.addClass('fcp-week-view-wrapper');
     this.containerEl.style.setProperty('--fcp-num-days', this.dates.length.toString());
 
     const weekDates = this.dates;
 
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = this.formatDateIso(new Date());
 
     // Week Header Row
     const headerRow = this.containerEl.createDiv('fcp-week-header');
@@ -421,7 +429,8 @@ export class WeekViewRenderComponent {
     // 7 Day Columns
     weekDates.forEach((date, colIndex) => {
       const dateStr = this.formatDateIso(date);
-      const colEl = columnsContainer.createDiv('fcp-day-column');
+      const isToday = dateStr === todayStr;
+      const colEl = columnsContainer.createDiv(`fcp-day-column ${isToday ? 'is-today' : ''}`);
       colEl.dataset.date = dateStr;
       colEl.dataset.colIndex = colIndex.toString();
 
@@ -490,6 +499,11 @@ export class WeekViewRenderComponent {
       const ro = new ResizeObserver(() => syncHeaderScrollbar());
       ro.observe(gridBody);
     }
+
+    this.updateCurrentTimeIndicator();
+    this.currentTimeIntervalId = window.setInterval(() => {
+      this.updateCurrentTimeIndicator();
+    }, 30000);
   }
 
   /**
@@ -1173,6 +1187,59 @@ export class WeekViewRenderComponent {
         htmlEl.removeClass('is-focused');
       }
     });
+  }
+
+  public destroy(): void {
+    if (this.currentTimeIntervalId !== null) {
+      window.clearInterval(this.currentTimeIntervalId);
+      this.currentTimeIntervalId = null;
+    }
+    if (this.currentTimeEl) {
+      this.currentTimeEl.remove();
+      this.currentTimeEl = null;
+    }
+  }
+
+  private updateCurrentTimeIndicator(): void {
+    if (!this.containerEl || !this.containerEl.isConnected) {
+      this.destroy();
+      return;
+    }
+
+    const todayStr = this.formatDateIso(new Date());
+    const todayCol = this.containerEl.querySelector(`.fcp-day-column[data-date="${todayStr}"]`) as HTMLElement;
+
+    if (!todayCol) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.remove();
+        this.currentTimeEl = null;
+      }
+      return;
+    }
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const startMinutes = this.startHour * 60;
+    const endMinutes = this.endHour * 60;
+
+    if (currentMinutes < startMinutes || currentMinutes > endMinutes) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.style.display = 'none';
+      }
+      return;
+    }
+
+    const topPx = (currentMinutes - startMinutes) * (this.hourHeight / 60);
+
+    if (!this.currentTimeEl || this.currentTimeEl.parentElement !== todayCol) {
+      if (this.currentTimeEl) {
+        this.currentTimeEl.remove();
+      }
+      this.currentTimeEl = todayCol.createDiv('fcp-current-time-indicator');
+    }
+
+    this.currentTimeEl.style.display = 'block';
+    this.currentTimeEl.style.top = `${topPx}px`;
   }
 
   private escapeHtml(str: string): string {

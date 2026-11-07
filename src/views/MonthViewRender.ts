@@ -1,36 +1,53 @@
-import { Platform } from 'obsidian';
-import { CalendarEntry, PomodoroLogSession } from '../types';
+import { App, Platform, setIcon } from 'obsidian';
+import { CalendarEntry, PomodoroLogSession, MilestoneCategory, MonthSubView } from '../types';
+import { formatHoursAndMinutes } from '../utils';
+import { MilestonesViewRenderComponent } from './MilestonesViewRender';
+import { StatisticsViewRenderComponent } from './StatisticsViewRender';
 
 export interface MonthViewCallbacks {
   onDayClick: (dateIso: string) => void;
   onEventClick: (entry: CalendarEntry) => void;
+  onSaveMilestones: (categories: MilestoneCategory[]) => Promise<void>;
+  onSubViewChange?: (subView: MonthSubView) => void;
 }
 
 export class MonthViewRenderComponent {
+  private app: App;
   private containerEl: HTMLElement;
   private currentYear: number;
   private currentMonth: number; // 0-indexed (0 = Jan, 11 = Dec)
   private entries: CalendarEntry[];
   private pomoLogs: PomodoroLogSession[];
   private dailyHoursMap: Map<string, number>;
+  private milestones: MilestoneCategory[];
   private callbacks: MonthViewCallbacks;
+  private subView: MonthSubView;
+
+  private milestonesComponent: MilestonesViewRenderComponent | null = null;
+  private statsComponent: StatisticsViewRenderComponent | null = null;
 
   constructor(
+    app: App,
     containerEl: HTMLElement,
     year: number,
     month: number,
     entries: CalendarEntry[],
     pomoLogs: PomodoroLogSession[],
     dailyHoursMap: Map<string, number>,
-    callbacks: MonthViewCallbacks
+    milestones: MilestoneCategory[],
+    callbacks: MonthViewCallbacks,
+    initialSubView: MonthSubView = 'calendar'
   ) {
+    this.app = app;
     this.containerEl = containerEl;
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
     this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
+    this.milestones = milestones;
     this.callbacks = callbacks;
+    this.subView = initialSubView === 'calendar' ? 'calendar' : 'milestones';
     this.render();
   }
 
@@ -39,33 +56,97 @@ export class MonthViewRenderComponent {
     month: number,
     entries: CalendarEntry[],
     pomoLogs: PomodoroLogSession[],
-    dailyHoursMap: Map<string, number>
+    dailyHoursMap: Map<string, number>,
+    milestones: MilestoneCategory[]
   ) {
     this.currentYear = year;
     this.currentMonth = month;
     this.entries = entries;
     this.pomoLogs = pomoLogs;
     this.dailyHoursMap = dailyHoursMap;
+    this.milestones = milestones;
     this.render();
   }
 
-  private getTaskColor(title: string): string {
-    const normalized = title.toLowerCase().trim();
-    let hash = 0;
-    for (let i = 0; i < normalized.length; i++) {
-      hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 68%, 52%)`;
-  }
-
-  private render() {
+  public render() {
     this.containerEl.empty();
     this.containerEl.addClass('fcp-month-view-wrapper');
 
-    const layoutContainer = this.containerEl.createDiv('fcp-month-layout-container');
+    // 1. Minimalist Sub-Nav Bar inside Monthly View
+    const subNav = this.containerEl.createDiv('fcp-month-subnav');
 
-    // --- Left Panel: Calendar Grid ---
+    const leftGroup = subNav.createDiv('fcp-subnav-group');
+
+    const addSubBtn = (mode: MonthSubView, iconId: string, title: string) => {
+      const btn = leftGroup.createEl('button', {
+        cls: `fcp-subnav-btn ${this.subView === mode ? 'active' : ''}`,
+        ariaLabel: title
+      });
+      setIcon(btn, iconId);
+      btn.title = title;
+      btn.onclick = () => {
+        if (this.subView !== mode) {
+          this.subView = mode;
+          this.callbacks.onSubViewChange?.(mode);
+          this.render();
+        }
+      };
+      return btn;
+    };
+
+    addSubBtn('calendar', 'calendar', 'Month Days');
+    addSubBtn('milestones', 'milestone', 'Statistics & Milestones');
+
+    const rightGroup = subNav.createDiv('fcp-subnav-right');
+    let totalHours = 0;
+    for (const h of this.dailyHoursMap.values()) totalHours += h;
+    if (totalHours > 0) {
+      const metaEl = rightGroup.createSpan('fcp-subnav-meta');
+      metaEl.textContent = formatHoursAndMinutes(totalHours);
+      metaEl.title = 'Total focus hours this month';
+    }
+
+    // 2. View Body Area
+    const contentArea = this.containerEl.createDiv('fcp-month-content-area');
+
+    if (this.subView === 'calendar') {
+      this.renderCalendarGrid(contentArea);
+    } else {
+      this.renderFusedPanel(contentArea);
+    }
+  }
+
+  private renderFusedPanel(container: HTMLElement) {
+    const splitLayout = container.createDiv('fcp-month-fused-panel');
+
+    // Left: Statistics
+    const leftPane = splitLayout.createDiv('fcp-month-stats-pane');
+    this.statsComponent = new StatisticsViewRenderComponent(
+      leftPane,
+      this.currentYear,
+      this.currentMonth,
+      this.pomoLogs
+    );
+
+    // Right: Milestones
+    const rightPane = splitLayout.createDiv('fcp-month-milestones-pane');
+    this.milestonesComponent = new MilestonesViewRenderComponent(
+      this.app,
+      rightPane,
+      this.currentYear,
+      this.currentMonth,
+      this.milestones,
+      {
+        onSave: async (cats) => {
+          this.milestones = cats;
+          await this.callbacks.onSaveMilestones(cats);
+        }
+      }
+    );
+  }
+
+  private renderCalendarGrid(container: HTMLElement) {
+    const layoutContainer = container.createDiv('fcp-month-layout-container');
     const gridPanel = layoutContainer.createDiv('fcp-month-grid-panel');
 
     const weekdaysHeader = gridPanel.createDiv('fcp-month-weekdays-header');
@@ -120,9 +201,9 @@ export class MonthViewRenderComponent {
       const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
       if (dailyHours > 0) {
         const intensity = Math.min(1, dailyHours / 8);
-        const alpha = 0.12 + (intensity * 0.58);
-        cellEl.style.backgroundColor = `rgba(59, 130, 246, ${alpha.toFixed(2)})`;
-        cellEl.style.borderColor = `rgba(59, 130, 246, ${(alpha + 0.2).toFixed(2)})`;
+        const alpha = 0.10 + (intensity * 0.40);
+        cellEl.style.backgroundColor = `color-mix(in srgb, var(--interactive-accent) ${(alpha * 100).toFixed(0)}%, transparent)`;
+        cellEl.style.borderColor = `color-mix(in srgb, var(--interactive-accent) ${((alpha + 0.15) * 100).toFixed(0)}%, transparent)`;
       }
 
       const cellHeader = cellEl.createDiv('fcp-month-cell-header');
@@ -136,7 +217,6 @@ export class MonthViewRenderComponent {
       const dayEvents = this.entries.filter(e => e.date === cellIso && (e.type === 'event' || e.type === 'crucial'));
 
       if (dayEvents.length > 0) {
-        // Show crucial events first
         dayEvents.sort((a, b) => {
           if (a.type === 'crucial' && b.type !== 'crucial') return -1;
           if (a.type !== 'crucial' && b.type === 'crucial') return 1;
@@ -163,13 +243,9 @@ export class MonthViewRenderComponent {
 
       if (dailyHours > 0) {
         const hoursTag = cellEl.createDiv('fcp-month-day-hours');
-        const formattedHours = dailyHours % 1 === 0 ? `${dailyHours} Hrs` : `${dailyHours.toFixed(1)} Hrs`;
-        hoursTag.textContent = formattedHours;
+        hoursTag.textContent = formatHoursAndMinutes(dailyHours);
       }
     }
-
-    // --- Right Panel: Monthly Actual Focus Time Breakdown ---
-    this.renderBreakdownPanel(layoutContainer);
 
     setTimeout(() => {
       const scrollbarWidth = monthGrid.offsetWidth - monthGrid.clientWidth;
@@ -179,97 +255,6 @@ export class MonthViewRenderComponent {
         weekdaysHeader.style.paddingRight = '0px';
       }
     }, 0);
-  }
-
-  private renderBreakdownPanel(parentEl: HTMLElement) {
-    const breakdownPanel = parentEl.createDiv('fcp-month-breakdown-panel');
-    const monthPrefix = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}`;
-
-    // Group all actual focus time logs for current month case-insensitively
-    const activityMap: Map<string, { displayTitle: string; totalSeconds: number; color: string }> = new Map();
-    let grandTotalSeconds = 0;
-
-    this.pomoLogs.forEach(log => {
-      if (log.type !== 'work' || !log.date || !log.date.startsWith(monthPrefix)) return;
-      let rawTitle = (log.taskTitle || '').trim();
-      if (!rawTitle || rawTitle.toLowerCase() === 'general focus') return;
-
-      const lower = rawTitle.toLowerCase();
-      let displayTitle = rawTitle;
-      let normKey = lower;
-
-      if (log.taskId === 'focus-drills' || lower === 'drills' || lower.startsWith('[drill]') || lower.endsWith('drills') || lower.includes('drill:')) {
-        displayTitle = 'Drills';
-        normKey = 'drills';
-      } else if (log.taskId === 'focus-flashcards' || lower === 'flashcards' || lower.startsWith('[flashcard]') || lower.includes('flashcard')) {
-        displayTitle = 'Flashcards';
-        normKey = 'flashcards';
-      }
-
-      const secs = log.durationSeconds || 0;
-      if (secs <= 0) return;
-
-      grandTotalSeconds += secs;
-
-      if (activityMap.has(normKey)) {
-        activityMap.get(normKey)!.totalSeconds += secs;
-      } else {
-        activityMap.set(normKey, {
-          displayTitle: displayTitle,
-          totalSeconds: secs,
-          color: this.getTaskColor(displayTitle)
-        });
-      }
-    });
-
-    const grandTotalHours = grandTotalSeconds / 3600;
-    const activities = Array.from(activityMap.values())
-      .map(act => ({
-        displayTitle: act.displayTitle,
-        totalHours: act.totalSeconds / 3600,
-        color: act.color
-      }))
-      .sort((a, b) => b.totalHours - a.totalHours);
-
-    const header = breakdownPanel.createDiv('fcp-breakdown-header');
-    header.innerHTML = `
-      <div class="fcp-breakdown-title">STATISTICS</div>
-      <div class="fcp-breakdown-subtitle">${grandTotalHours.toFixed(1)} Focus Hrs</div>
-    `;
-
-    if (activities.length === 0 || grandTotalSeconds === 0) {
-      const emptyMsg = breakdownPanel.createDiv('fcp-breakdown-empty');
-      emptyMsg.textContent = 'No focus time recorded this month.';
-      return;
-    }
-
-    // Stacked Bar Container
-    const barContainer = breakdownPanel.createDiv('fcp-stacked-bar');
-
-    activities.forEach(act => {
-      const pct = (act.totalHours / (grandTotalHours || 1)) * 100;
-      const segment = barContainer.createDiv('fcp-stacked-segment');
-      segment.style.backgroundColor = act.color;
-      segment.style.flex = `${pct}`;
-      segment.title = `${act.displayTitle}: ${act.totalHours.toFixed(1)}h (${pct.toFixed(0)}%)`;
-    });
-
-    // Legend List
-    const legend = breakdownPanel.createDiv('fcp-breakdown-legend');
-    activities.forEach(act => {
-      const pct = (act.totalHours / (grandTotalHours || 1)) * 100;
-      const item = legend.createDiv('fcp-legend-item');
-      item.innerHTML = `
-        <div class="fcp-legend-left">
-          <span class="fcp-legend-dot" style="background-color: ${act.color};"></span>
-          <span class="fcp-legend-name" title="${this.escapeHtml(act.displayTitle)}">${this.escapeHtml(act.displayTitle)}</span>
-        </div>
-        <div class="fcp-legend-right">
-          <span class="fcp-legend-hours">${act.totalHours.toFixed(1)}h</span>
-          <span class="fcp-legend-pct">${pct.toFixed(0)}%</span>
-        </div>
-      `;
-    });
   }
 
   private escapeHtml(str: string): string {

@@ -1,5 +1,5 @@
-import { ItemView, WorkspaceLeaf, Platform } from 'obsidian';
-import { ViewMode, CalendarEntry, PomodoroLogSession, TimeWindow } from '../types';
+import { ItemView, WorkspaceLeaf, Platform, setIcon } from 'obsidian';
+import { ViewMode, MonthSubView, CalendarEntry, PomodoroLogSession, TimeWindow, MilestoneCategory } from '../types';
 import { StorageManager } from '../storage';
 import { PomodoroManager } from '../pomodoro';
 import { PomodoroHeaderComponent } from './PomodoroHeader';
@@ -15,6 +15,7 @@ export class FocusCalendarView extends ItemView {
   private pomodoro: PomodoroManager;
 
   private viewMode: ViewMode = 'week';
+  private monthSubView: MonthSubView = 'calendar';
   private currentDate: Date = new Date();
 
   private headerComponent: PomodoroHeaderComponent | null = null;
@@ -27,6 +28,7 @@ export class FocusCalendarView extends ItemView {
   private entries: CalendarEntry[] = [];
   private pomoLogs: PomodoroLogSession[] = [];
   private windows: TimeWindow[] = [];
+  private milestones: MilestoneCategory[] = [];
 
   constructor(leaf: WorkspaceLeaf, storage: StorageManager, pomodoro: PomodoroManager) {
     super(leaf);
@@ -92,6 +94,9 @@ export class FocusCalendarView extends ItemView {
 
     this.entries = Array.from(entryMap.values());
     this.pomoLogs = Array.from(logMap.values());
+
+    const currentYearMonth = this.getYearMonthString(targetDate);
+    this.milestones = await this.storage.loadMilestonesForMonth(currentYearMonth);
   }
 
   public renderView(): void {
@@ -102,7 +107,9 @@ export class FocusCalendarView extends ItemView {
     const navBar = container.createDiv('fcp-nav-bar');
 
     const leftNav = navBar.createDiv('fcp-nav-left');
-    const todayBtn = leftNav.createEl('button', { cls: 'fcp-btn', text: 'TODAY' });
+    const todayBtn = leftNav.createEl('button', { cls: 'fcp-icon-btn fcp-today-btn', ariaLabel: 'Today' });
+    setIcon(todayBtn, 'calendar-check');
+    todayBtn.title = 'Today';
     todayBtn.onclick = async () => {
       if (this.viewMode === 'timeline') {
         this.timelineComponent?.scrollToToday(true);
@@ -161,43 +168,29 @@ export class FocusCalendarView extends ItemView {
     }
 
     const modeSwitch = navBar.createDiv('fcp-mode-switch');
-    const weekBtn = modeSwitch.createEl('button', {
-      cls: `fcp-switch-btn ${this.viewMode === 'week' ? 'active' : ''}`,
-      text: this.isMobileWeekView() ? '3-DAY' : 'WEEK'
-    });
-    weekBtn.onclick = async () => {
-      if (this.viewMode !== 'week') {
-        this.viewMode = 'week';
-        await this.refreshData();
-        this.renderView();
-      }
+
+    const addModeBtn = (mode: ViewMode, iconId: string, titleText: string) => {
+      const btn = modeSwitch.createEl('button', {
+        cls: `fcp-switch-btn ${this.viewMode === mode ? 'active' : ''}`,
+        ariaLabel: titleText
+      });
+      setIcon(btn, iconId);
+      btn.title = titleText;
+      btn.onclick = async () => {
+        if (this.viewMode !== mode) {
+          this.viewMode = mode;
+          await this.refreshData();
+          this.renderView();
+        }
+      };
+      return btn;
     };
 
-    const monthBtn = modeSwitch.createEl('button', {
-      cls: `fcp-switch-btn ${this.viewMode === 'month' ? 'active' : ''}`,
-      text: 'MONTH'
-    });
-    monthBtn.onclick = async () => {
-      if (this.viewMode !== 'month') {
-        this.viewMode = 'month';
-        await this.refreshData();
-        this.renderView();
-      }
-    };
+    addModeBtn('week', 'calendar-range', this.isMobileWeekView() ? '3-Day View' : 'Week View');
+    addModeBtn('month', 'calendar', 'Month View');
+    addModeBtn('timeline', 'git-commit-horizontal', 'Timeline');
 
-    const timelineBtn = modeSwitch.createEl('button', {
-      cls: `fcp-switch-btn ${this.viewMode === 'timeline' ? 'active' : ''}`,
-      text: 'TIMELINE'
-    });
-    timelineBtn.onclick = async () => {
-      if (this.viewMode !== 'timeline') {
-        this.viewMode = 'timeline';
-        await this.refreshData();
-        this.renderView();
-      }
-    };
-
-    if (this.viewMode !== 'timeline') {
+    if (this.viewMode === 'week') {
       const pomoHeaderContainer = container.createDiv('fcp-header-slot');
       const totalHours = this.calculateTotalHours();
       this.headerComponent = new PomodoroHeaderComponent(
@@ -211,6 +204,11 @@ export class FocusCalendarView extends ItemView {
     }
 
     const viewAreaContainer = container.createDiv('fcp-view-area');
+
+    if (this.weekComponent) {
+      this.weekComponent.destroy();
+      this.weekComponent = null;
+    }
 
     if (this.viewMode === 'week') {
       const dates = this.getActiveWeekViewDates();
@@ -276,13 +274,16 @@ export class FocusCalendarView extends ItemView {
         this.windows
       );
     } else if (this.viewMode === 'month') {
+      const ym = this.getYearMonthString(this.currentDate);
       this.monthComponent = new MonthViewRenderComponent(
+        this.app,
         viewAreaContainer,
         this.currentDate.getFullYear(),
         this.currentDate.getMonth(),
         this.entries,
         this.pomoLogs,
         this.buildDailyHoursMap(),
+        this.milestones,
         {
           onDayClick: async (dateIso) => {
             this.currentDate = new Date(dateIso + 'T12:00:00');
@@ -306,8 +307,16 @@ export class FocusCalendarView extends ItemView {
               },
               this.windows
             ).open();
+          },
+          onSaveMilestones: async (cats) => {
+            this.milestones = cats;
+            await this.storage.saveMilestonesForMonth(ym, cats);
+          },
+          onSubViewChange: (subView) => {
+            this.monthSubView = subView;
           }
-        }
+        },
+        this.monthSubView
       );
     } else {
       this.timelineComponent = new TimelineViewRenderComponent(
@@ -516,5 +525,17 @@ export class FocusCalendarView extends ItemView {
     const y = d.getFullYear();
     const m = (d.getMonth() + 1).toString().padStart(2, '0');
     return `${y}-${m}`;
+  }
+
+  public async onClose(): Promise<void> {
+    if (this.weekComponent) {
+      this.weekComponent.destroy();
+      this.weekComponent = null;
+    }
+    this.monthComponent = null;
+    this.milestonesComponent = null;
+    this.statsComponent = null;
+    this.timelineComponent = null;
+    this.headerComponent = null;
   }
 }

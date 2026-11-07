@@ -58,7 +58,40 @@ export const DEFAULT_SETTINGS: FocusCalendarSettings = {
   breakEndSoundPath: ''
 };
 
-export type ViewMode = 'month' | 'week' | 'timeline';
+export type ViewMode = 'week' | 'month' | 'timeline';
+
+export type MonthSubView = 'calendar' | 'milestones' | 'stats';
+
+export type MilestoneStatus = 'todo' | 'done' | 'skipped';
+
+export interface MilestoneSubItem {
+  id: string;
+  text: string;
+  createdAt: number;
+}
+
+// Deprecated alias for backwards compatibility
+export type MilestoneComment = MilestoneSubItem;
+
+export interface MilestoneItem {
+  id: string;
+  title: string;
+  status: MilestoneStatus;
+  subItems?: MilestoneSubItem[];
+  comments?: MilestoneSubItem[]; // backwards compatibility
+  createdAt: number;
+}
+
+export interface MilestoneCategory {
+  id: string;
+  name: string;
+  items: MilestoneItem[];
+}
+
+export interface MonthMilestonesData {
+  yearMonth: string; // YYYY-MM
+  categories: MilestoneCategory[];
+}
 
 export interface ImminentEventInfo {
   title: string;
