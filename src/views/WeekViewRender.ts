@@ -712,7 +712,7 @@ export class WeekViewRenderComponent {
       menu.addItem(item => {
         const types: Array<{ key: 'task' | 'event' | 'crucial'; label: string }> = [
           { key: 'task', label: 'Task (Pastel Blue)' },
-          { key: 'event', label: 'Event (Green)' },
+          { key: 'event', label: 'Event (Light Blue)' },
           { key: 'crucial', label: 'Crucial (Yellow)' }
         ];
         const nextIdx = (types.findIndex(t => t.key === entry.type) + 1) % types.length;

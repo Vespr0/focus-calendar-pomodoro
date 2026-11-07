@@ -8,10 +8,23 @@ export interface ProgressStats {
 
 /**
  * Calculates progress for a category where 'done' and 'skipped' both count towards completion.
+ * Counts both milestone items and their sub-items.
  */
 export function calculateCategoryProgress(cat: MilestoneCategory): ProgressStats {
-  const total = cat.items.length;
-  const completed = cat.items.filter((i) => i.status === 'done' || i.status === 'skipped').length;
+  let total = 0;
+  let completed = 0;
+
+  cat.items.forEach((item) => {
+    total++;
+    if (item.status === 'done' || item.status === 'skipped') completed++;
+
+    const subItems = item.subItems || item.comments || [];
+    subItems.forEach((sub) => {
+      total++;
+      if (sub.status === 'done' || sub.status === 'skipped') completed++;
+    });
+  });
+
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return { total, completed, pct };
 }
@@ -26,6 +39,12 @@ export function calculateOverallProgress(categories: MilestoneCategory[]): Progr
     cat.items.forEach((item) => {
       total++;
       if (item.status === 'done' || item.status === 'skipped') completed++;
+
+      const subItems = item.subItems || item.comments || [];
+      subItems.forEach((sub) => {
+        total++;
+        if (sub.status === 'done' || sub.status === 'skipped') completed++;
+      });
     });
   });
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -76,9 +95,23 @@ export function parseCheckpointMarkdown(content: string): MilestoneCategory[] {
       // Deeper indent under existing milestone is a sub-item
       if (indent >= 4 && currentMilestone) {
         if (!currentMilestone.subItems) currentMilestone.subItems = [];
+
+        let subStatus: 'todo' | 'done' | 'skipped' = 'todo';
+        let subText = text;
+        if (subText.includes('🟣') || subText.toLowerCase().includes('saltat') || subText.toLowerCase().includes('skipped')) {
+          subStatus = 'skipped';
+        } else if (subText.startsWith('[x]') || subText.startsWith('[X]')) {
+          subStatus = 'done';
+          subText = subText.substring(3).trim();
+        } else if (subText.startsWith('[ ]')) {
+          subStatus = 'todo';
+          subText = subText.substring(3).trim();
+        }
+
         currentMilestone.subItems.push({
           id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-          text: text,
+          text: subText,
+          status: subStatus,
           createdAt: Date.now()
         });
         currentMilestone.comments = currentMilestone.subItems;
@@ -110,6 +143,7 @@ export function parseCheckpointMarkdown(content: string): MilestoneCategory[] {
       currentMilestone.subItems.push({
         id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
         text: trimmed,
+        status: 'todo',
         createdAt: Date.now()
       });
       currentMilestone.comments = currentMilestone.subItems;
@@ -132,7 +166,8 @@ export function exportMilestonesToMarkdown(monthTitle: string, categories: Miles
       const subItems = item.subItems || item.comments || [];
       if (subItems.length > 0) {
         for (const sub of subItems) {
-          md += `    - ${sub.text}\n`;
+          const subIcon = sub.status === 'done' ? '[x] ' : (sub.status === 'skipped' ? '🟣 ' : '');
+          md += `    - ${subIcon}${sub.text}\n`;
         }
       }
     }

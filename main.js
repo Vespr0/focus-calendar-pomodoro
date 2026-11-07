@@ -35,8 +35,19 @@ var import_obsidian8 = require("obsidian");
 
 // src/views/milestones/MilestonesUtils.ts
 function calculateCategoryProgress(cat) {
-  const total = cat.items.length;
-  const completed = cat.items.filter((i) => i.status === "done" || i.status === "skipped").length;
+  let total = 0;
+  let completed = 0;
+  cat.items.forEach((item) => {
+    total++;
+    if (item.status === "done" || item.status === "skipped")
+      completed++;
+    const subItems = item.subItems || item.comments || [];
+    subItems.forEach((sub) => {
+      total++;
+      if (sub.status === "done" || sub.status === "skipped")
+        completed++;
+    });
+  });
   const pct = total > 0 ? Math.round(completed / total * 100) : 0;
   return { total, completed, pct };
 }
@@ -768,7 +779,7 @@ var WeekViewRenderComponent = class {
       menu.addItem((item) => {
         const types = [
           { key: "task", label: "Task (Pastel Blue)" },
-          { key: "event", label: "Event (Green)" },
+          { key: "event", label: "Event (Light Blue)" },
           { key: "crucial", label: "Crucial (Yellow)" }
         ];
         const nextIdx = (types.findIndex((t) => t.key === entry.type) + 1) % types.length;
@@ -1319,12 +1330,68 @@ var MilestonesSubItemsList = class {
       return;
     const subItemsContainer = container.createDiv("fcp-ms-subitems-container");
     subItems.forEach((subItem) => {
-      const row = subItemsContainer.createDiv("fcp-ms-subitem-row");
-      const bullet = row.createSpan("fcp-ms-subitem-bullet");
-      bullet.textContent = "\u2022";
+      const status = subItem.status || "todo";
+      const row = subItemsContainer.createDiv(`fcp-ms-subitem-row status-${status}`);
+      row.dataset.id = subItem.id;
+      const checkBtn = row.createSpan(`fcp-ms-subitem-check status-${status}`);
+      if (status === "done") {
+        (0, import_obsidian2.setIcon)(checkBtn, "check");
+        checkBtn.title = "Completed (click to toggle, right-click to skip)";
+      } else if (status === "skipped") {
+        checkBtn.innerHTML = `<span class="fcp-ms-skipped-dot">\u{1F7E3}</span>`;
+        checkBtn.title = "Skipped (Counts towards progress. Right-click to change)";
+      } else {
+        checkBtn.innerHTML = `<span class="fcp-ms-subitem-dot"></span>`;
+        checkBtn.title = "To Do (click to complete, right-click to skip)";
+      }
+      checkBtn.onclick = async (e) => {
+        e.stopPropagation();
+        subItem.status = status === "done" ? "todo" : "done";
+        await callbacks.onSave();
+        callbacks.onRefresh();
+      };
+      const openMenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const menu = new import_obsidian2.Menu();
+        menu.addItem(
+          (i) => i.setTitle("Mark as Done (\u2713)").setIcon("check").setChecked(status === "done").onClick(async () => {
+            subItem.status = "done";
+            await callbacks.onSave();
+            callbacks.onRefresh();
+          })
+        );
+        menu.addItem(
+          (i) => i.setTitle("Mark as Skipped (\u{1F7E3} Counts towards progress)").setIcon("circle-slash").setChecked(status === "skipped").onClick(async () => {
+            subItem.status = "skipped";
+            await callbacks.onSave();
+            callbacks.onRefresh();
+          })
+        );
+        menu.addItem(
+          (i) => i.setTitle("Mark as To Do (\u2022)").setIcon("circle").setChecked(status === "todo").onClick(async () => {
+            subItem.status = "todo";
+            await callbacks.onSave();
+            callbacks.onRefresh();
+          })
+        );
+        menu.addSeparator();
+        menu.addItem(
+          (i) => i.setTitle("Delete List Item").setIcon("trash-2").onClick(async () => {
+            const updated = (item.subItems || item.comments || []).filter((s) => s.id !== subItem.id);
+            item.subItems = updated;
+            item.comments = updated;
+            await callbacks.onSave();
+            callbacks.onRefresh();
+          })
+        );
+        menu.showAtMouseEvent(e);
+      };
+      row.oncontextmenu = openMenu;
+      checkBtn.oncontextmenu = openMenu;
       const textEl = row.createSpan("fcp-ms-subitem-text");
       textEl.textContent = subItem.text;
-      textEl.title = "Click to edit";
+      textEl.title = "Click to edit (Right-click for options)";
       textEl.onclick = (e) => {
         e.stopPropagation();
         enableInlineEdit(textEl, subItem.text, async (newText) => {
@@ -1353,6 +1420,7 @@ var MilestonesSubItemsList = class {
     const newSub = {
       id: "sub-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
       text: "New item",
+      status: "todo",
       createdAt: Date.now()
     };
     item.subItems.push(newSub);
@@ -1665,10 +1733,8 @@ function aggregateMonthlyActivities(logs, year, month) {
     if (log.type !== "work" || !log.date || !log.date.startsWith(monthPrefix))
       return;
     const rawTitle = (log.taskTitle || "").trim();
-    if (!rawTitle || rawTitle.toLowerCase() === "general focus")
-      return;
-    const lower = rawTitle.toLowerCase();
-    let displayTitle = rawTitle;
+    let displayTitle = rawTitle || "General Focus";
+    const lower = displayTitle.toLowerCase();
     let normKey = lower;
     if (log.taskId === "focus-drills" || lower === "drills" || lower.startsWith("[drill]") || lower.endsWith("drills") || lower.includes("drill:")) {
       displayTitle = "Drills";
@@ -1842,9 +1908,13 @@ var MonthViewRenderComponent = class {
     addSubBtn("calendar", "calendar", "Month Days");
     addSubBtn("milestones", "milestone", "Statistics & Milestones");
     const rightGroup = subNav.createDiv("fcp-subnav-right");
+    const currentYearMonth = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, "0")}`;
     let totalHours = 0;
-    for (const h of this.dailyHoursMap.values())
-      totalHours += h;
+    for (const [date, h] of this.dailyHoursMap.entries()) {
+      if (date.startsWith(currentYearMonth)) {
+        totalHours += h;
+      }
+    }
     if (totalHours > 0) {
       const metaEl = rightGroup.createSpan("fcp-subnav-meta");
       metaEl.textContent = formatHoursAndMinutes(totalHours);
@@ -1925,7 +1995,7 @@ var MonthViewRenderComponent = class {
       const isOtherMonth = monthOffset !== 0;
       const cellEl = monthGrid.createDiv(`fcp-month-cell ${isOtherMonth ? "other-month" : ""} ${isToday ? "is-today" : ""}`);
       const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
-      if (dailyHours > 0) {
+      if (!isOtherMonth && dailyHours > 0) {
         const intensity = Math.min(1, dailyHours / 8);
         const alpha = 0.1 + intensity * 0.4;
         cellEl.style.backgroundColor = `color-mix(in srgb, var(--interactive-accent) ${(alpha * 100).toFixed(0)}%, transparent)`;
@@ -1963,7 +2033,7 @@ var MonthViewRenderComponent = class {
           });
         });
       }
-      if (dailyHours > 0) {
+      if (!isOtherMonth && dailyHours > 0) {
         const hoursTag = cellEl.createDiv("fcp-month-day-hours");
         hoursTag.textContent = formatHoursAndMinutes(dailyHours);
       }
@@ -2867,7 +2937,11 @@ var FocusCalendarView = class extends import_obsidian8.ItemView {
         const step = this.isMobileWeekView() ? 3 : 7;
         this.currentDate.setDate(this.currentDate.getDate() - step);
       } else if (this.viewMode === "month") {
+        const targetDay = this.currentDate.getDate();
+        this.currentDate.setDate(1);
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+        const daysInNewMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0).getDate();
+        this.currentDate.setDate(Math.min(targetDay, daysInNewMonth));
       }
       await this.refreshData();
       this.renderView();
@@ -2879,7 +2953,11 @@ var FocusCalendarView = class extends import_obsidian8.ItemView {
         const step = this.isMobileWeekView() ? 3 : 7;
         this.currentDate.setDate(this.currentDate.getDate() + step);
       } else if (this.viewMode === "month") {
+        const targetDay = this.currentDate.getDate();
+        this.currentDate.setDate(1);
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+        const daysInNewMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0).getDate();
+        this.currentDate.setDate(Math.min(targetDay, daysInNewMonth));
       }
       await this.refreshData();
       this.renderView();
@@ -3632,7 +3710,8 @@ var PomodoroManager = class {
         this.activeWorkSecondsAccumulated = 0;
         return;
       }
-      const today = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+      const d = /* @__PURE__ */ new Date();
+      const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
       const session = {
         id: "session-" + Date.now(),
         taskId: this.focusedTask.id,

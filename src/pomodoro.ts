@@ -187,7 +187,8 @@ export class PomodoroManager {
         this.activeWorkSecondsAccumulated = 0;
         return;
       }
-      const today = new Date().toISOString().substring(0, 10);
+      const d = new Date();
+      const today = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
       const session: PomodoroLogSession = {
         id: 'session-' + Date.now(),
         taskId: this.focusedTask.id,

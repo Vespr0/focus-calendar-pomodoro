@@ -40,10 +40,8 @@ export function aggregateMonthlyActivities(
   logs.forEach((log) => {
     if (log.type !== 'work' || !log.date || !log.date.startsWith(monthPrefix)) return;
     const rawTitle = (log.taskTitle || '').trim();
-    if (!rawTitle || rawTitle.toLowerCase() === 'general focus') return;
-
-    const lower = rawTitle.toLowerCase();
-    let displayTitle = rawTitle;
+    let displayTitle = rawTitle || 'General Focus';
+    const lower = displayTitle.toLowerCase();
     let normKey = lower;
 
     if (

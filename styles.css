@@ -1,35 +1,55 @@
 /* Focus Calendar & Pomodoro Plugin Styles */
 
 :root {
+  /* Unified Suite Color Tokens */
+  --suite-color-task: #3b82f6;
+  --suite-color-event: #38bdf8;
+  --suite-color-crucial: #f59e0b;
+  --suite-color-done: #10b981;
+  --suite-color-skipped: #a855f7;
+
   --fcp-red-accent: #ef4444;
   --fcp-blue-accent: #3b82f6;
-  --fcp-task-bg: rgba(59, 130, 246, 0.15);
-  --fcp-task-border: #3b82f6;
+  --fcp-task-bg: var(--suite-task-bg, rgba(59, 130, 246, 0.14));
+  --fcp-task-border: var(--suite-color-task, #3b82f6);
   --fcp-task-text: var(--text-normal);
-  --fcp-task-glow: rgba(59, 130, 246, 0.45);
-  --fcp-event-bg: rgba(34, 197, 94, 0.18);
-  --fcp-event-border: #22c55e;
+  --fcp-task-glow: rgba(59, 130, 246, 0.40);
+  --fcp-event-bg: var(--suite-event-bg, rgba(56, 189, 248, 0.14));
+  --fcp-event-border: var(--suite-color-event, #38bdf8);
   --fcp-event-text: var(--text-normal);
-  --fcp-event-glow: rgba(34, 197, 94, 0.45);
-  --fcp-crucial-bg: rgba(234, 179, 8, 0.22);
-  --fcp-crucial-border: #eab308;
+  --fcp-event-glow: rgba(56, 189, 248, 0.35);
+  --fcp-crucial-bg: var(--suite-crucial-bg, rgba(245, 158, 11, 0.18));
+  --fcp-crucial-border: var(--suite-color-crucial, #f59e0b);
   --fcp-crucial-text: #fef08a;
-  --fcp-crucial-glow: rgba(234, 179, 8, 0.45);
+  --fcp-crucial-glow: rgba(245, 158, 11, 0.40);
+
+  /* Modern Surface & Hairline Border Tokens (Eliminates murky early-2000s stacked grays) */
+  --fcp-surface-header: color-mix(in srgb, var(--background-secondary) 30%, var(--background-primary));
+  --fcp-surface-subnav: color-mix(in srgb, var(--background-secondary) 15%, var(--background-primary));
+  --fcp-surface-pill: color-mix(in srgb, var(--background-modifier-hover) 35%, transparent);
+  --fcp-border-hairline: color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+  --fcp-border-subtle: color-mix(in srgb, var(--background-modifier-border) 25%, transparent);
 }
 
 .theme-light {
   --fcp-task-bg: #dbeafe;
-  --fcp-task-border: #3b82f6;
+  --fcp-task-border: #2563eb;
   --fcp-task-text: #1e3a8a;
-  --fcp-task-glow: rgba(59, 130, 246, 0.35);
-  --fcp-event-bg: #dcfce7;
-  --fcp-event-border: #16a34a;
-  --fcp-event-text: #14532d;
-  --fcp-event-glow: rgba(22, 163, 74, 0.35);
+  --fcp-task-glow: rgba(37, 99, 235, 0.25);
+  --fcp-event-bg: #e0f2fe;
+  --fcp-event-border: #0284c7;
+  --fcp-event-text: #0369a1;
+  --fcp-event-glow: rgba(2, 132, 199, 0.25);
   --fcp-crucial-bg: #fef9c3;
-  --fcp-crucial-border: #ca8a04;
-  --fcp-crucial-text: #854d0e;
-  --fcp-crucial-glow: rgba(202, 138, 4, 0.35);
+  --fcp-crucial-border: #d97706;
+  --fcp-crucial-text: #78350f;
+  --fcp-crucial-glow: rgba(217, 119, 6, 0.25);
+
+  --fcp-surface-header: color-mix(in srgb, var(--background-secondary) 50%, var(--background-primary));
+  --fcp-surface-subnav: color-mix(in srgb, var(--background-secondary) 30%, var(--background-primary));
+  --fcp-surface-pill: color-mix(in srgb, var(--background-modifier-hover) 45%, transparent);
+  --fcp-border-hairline: color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+  --fcp-border-subtle: color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
 }
 
 .view-content.fcp-main-container,
@@ -59,15 +79,15 @@
   padding-top: max(var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
 }
 
-/* Navigation Bar */
+/* Navigation Bar - Modern Sleek Surface */
 .fcp-nav-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  border-top: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
-  background-color: var(--background-secondary);
+  padding: 8px 16px;
+  border-top: none;
+  border-bottom: 1px solid var(--fcp-border-hairline);
+  background-color: var(--fcp-surface-header);
   box-sizing: border-box;
 }
 
@@ -78,20 +98,21 @@
 }
 
 .fcp-nav-date-title {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   margin-left: 8px;
   color: var(--text-normal);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 
 .fcp-mode-switch {
   display: flex;
-  background: var(--background-primary);
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
+  background: var(--fcp-surface-pill);
+  padding: 2px 3px;
+  border-radius: 9999px;
+  border: 1px solid var(--fcp-border-subtle);
+  gap: 2px;
 }
 
 /* Button styling - Clean & Flat (No Drop Shadows) */
@@ -106,7 +127,7 @@ button.fcp-btn,
 
 .fcp-btn {
   background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--fcp-border-subtle);
   border-radius: 6px;
   padding: 4px 12px;
   font-size: 0.85rem;
@@ -135,21 +156,21 @@ button.fcp-btn,
 .fcp-switch-btn {
   background: transparent;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 9999px;
   cursor: pointer;
   color: var(--text-muted);
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fcp-switch-btn svg {
-  width: 17px;
-  height: 17px;
+  width: 15px;
+  height: 15px;
   stroke-width: 2px;
 }
 
@@ -161,11 +182,13 @@ button.fcp-btn,
 .fcp-switch-btn.active {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18) !important;
 }
 
 .fcp-today-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -177,10 +200,10 @@ button.fcp-btn,
   height: 16px;
 }
 
-/* Header Slot / Pomodoro Bar */
+/* Header Slot / Pomodoro Bar - Integrated Seamless Surface */
 .fcp-header-slot {
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary-alt);
+  border-bottom: 1px solid var(--fcp-border-hairline);
+  background: var(--fcp-surface-subnav);
   box-sizing: border-box;
 }
 
@@ -220,14 +243,14 @@ button.fcp-btn,
 }
 
 .fcp-imminent-badge {
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid #22c55e;
-  color: #22c55e;
+  background: var(--fcp-event-bg);
+  border: 1px solid var(--fcp-event-border);
+  color: var(--fcp-event-border);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.5px;
-  padding: 3px 8px;
-  border-radius: 12px;
+  padding: 2px 8px;
+  border-radius: 9999px;
   white-space: nowrap;
 }
 
@@ -383,8 +406,8 @@ button.fcp-play-btn:hover {
 
 .fcp-week-header {
   display: flex;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  border-bottom: 1px solid var(--fcp-border-hairline);
+  background: var(--fcp-surface-header);
   box-sizing: border-box;
 }
 
@@ -392,7 +415,7 @@ button.fcp-play-btn:hover {
   width: 60px;
   min-width: 60px;
   max-width: 60px;
-  border-right: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--fcp-border-hairline);
   box-sizing: border-box;
 }
 
@@ -406,7 +429,7 @@ button.fcp-play-btn:hover {
 .fcp-day-header-cell {
   text-align: center;
   padding: 8px 4px;
-  border-right: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--fcp-border-hairline);
   box-sizing: border-box;
 }
 
@@ -900,8 +923,8 @@ button.fcp-play-btn:hover {
 .fcp-month-weekdays-header {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  border-bottom: 1px solid var(--fcp-border-hairline);
+  background: var(--fcp-surface-header);
   box-sizing: border-box;
   flex-shrink: 0;
   position: sticky;
@@ -916,7 +939,7 @@ button.fcp-play-btn:hover {
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  border-right: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--fcp-border-hairline);
   box-sizing: border-box;
   min-width: 0;
   overflow: hidden;
@@ -940,8 +963,8 @@ button.fcp-play-btn:hover {
 
 .fcp-month-cell {
   position: relative;
-  border-right: 1px solid var(--background-modifier-border);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--fcp-border-hairline);
+  border-bottom: 1px solid var(--fcp-border-hairline);
   padding: 5px 6px;
   display: flex;
   flex-direction: column;
@@ -959,12 +982,12 @@ button.fcp-play-btn:hover {
 }
 
 .fcp-month-cell:hover {
-  filter: brightness(1.08);
+  background: color-mix(in srgb, var(--background-modifier-hover) 25%, var(--background-primary));
 }
 
 .fcp-month-cell.other-month {
-  opacity: 0.45;
-  background: var(--background-secondary);
+  opacity: 0.35;
+  background: color-mix(in srgb, var(--background-secondary) 25%, transparent);
 }
 
 .fcp-month-cell.is-today .fcp-month-cell-header {
@@ -1266,8 +1289,8 @@ button.fcp-play-btn:hover {
   align-items: center;
   justify-content: space-between;
   padding: 8px 18px;
-  background-color: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--fcp-surface-header);
+  border-bottom: 1px solid var(--fcp-border-hairline);
   flex-shrink: 0;
 }
 
@@ -1276,6 +1299,42 @@ button.fcp-play-btn:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.fcp-timeline-controls .fcp-btn {
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  background: var(--fcp-surface-pill);
+  border: 1px solid var(--fcp-border-subtle);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fcp-timeline-controls .fcp-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.fcp-timeline-controls .fcp-btn-primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18) !important;
+}
+
+.fcp-timeline-controls .fcp-icon-btn {
+  border-radius: 9999px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fcp-surface-pill);
+  border: 1px solid var(--fcp-border-subtle);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fcp-timeline-controls .fcp-icon-btn:hover {
+  background: var(--background-modifier-hover);
 }
 
 .fcp-timeline-scroll-container {
@@ -1293,17 +1352,17 @@ button.fcp-play-btn:hover {
 }
 
 .fcp-timeline-scroll-container::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+  height: 6px;
+  width: 6px;
 }
 
 .fcp-timeline-scroll-container::-webkit-scrollbar-track {
-  background: var(--background-secondary);
+  background: transparent;
 }
 
 .fcp-timeline-scroll-container::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border-hover);
-  border-radius: 4px;
+  background: var(--fcp-border-hairline);
+  border-radius: 9999px;
 }
 
 .fcp-timeline-scroll-container::-webkit-scrollbar-thumb:hover {
@@ -1317,16 +1376,16 @@ button.fcp-play-btn:hover {
   box-sizing: border-box;
 }
 
-/* Timescale Header Ruler */
+/* Timescale Header Ruler - Modern Integrated Strip */
 .fcp-timeline-header-ruler {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--fcp-surface-subnav);
+  border-bottom: 1px solid var(--fcp-border-hairline);
   margin: 0;
   padding: 0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .fcp-timeline-months-row {
@@ -1338,19 +1397,19 @@ button.fcp-play-btn:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 700;
-  font-size: 0.84rem;
+  font-weight: 600;
+  font-size: 0.82rem;
   color: var(--text-normal);
-  border-right: 1px solid var(--background-modifier-border);
-  padding: 8px 10px;
+  border-right: 1px solid var(--fcp-border-hairline);
+  padding: 7px 10px;
   box-sizing: border-box;
   overflow: hidden;
   white-space: nowrap;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 
 .fcp-ruler-month-label {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .fcp-ruler-month-days {
@@ -1358,6 +1417,7 @@ button.fcp-play-btn:hover {
   color: var(--text-muted);
   font-family: var(--font-monospace, monospace);
   font-weight: 400;
+  opacity: 0.75;
 }
 
 .fcp-timeline-month-col:last-child {
@@ -1368,8 +1428,8 @@ button.fcp-play-btn:hover {
   position: relative;
   width: 100%;
   height: 20px;
-  border-top: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary-alt);
+  border-top: 1px solid var(--fcp-border-subtle);
+  background: color-mix(in srgb, var(--background-secondary) 15%, var(--background-primary));
   overflow: hidden;
 }
 
@@ -1382,7 +1442,7 @@ button.fcp-play-btn:hover {
   justify-content: center;
   font-size: 0.66rem;
   color: var(--text-muted);
-  border-right: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--fcp-border-subtle);
   box-sizing: border-box;
   font-family: var(--font-monospace, monospace);
   font-weight: 500;
@@ -1393,7 +1453,7 @@ button.fcp-play-btn:hover {
   border-right: none;
 }
 
-/* Vertical Grid Lines */
+/* Vertical Grid Lines - Soft Hairlines */
 .fcp-timeline-grid-overlay {
   position: absolute;
   top: 36px;
@@ -1408,16 +1468,16 @@ button.fcp-play-btn:hover {
   top: 0;
   bottom: 0;
   width: 1px;
-  background-color: var(--background-modifier-border);
-  opacity: 0.55;
+  background-color: var(--fcp-border-hairline);
+  opacity: 0.35;
 }
 
 .fcp-timeline-grid-line.is-month {
-  opacity: 0.65;
+  opacity: 0.45;
 }
 
 .fcp-timeline-grid-line.is-day {
-  opacity: 0.20;
+  opacity: 0.12;
 }
 
 /* Today Marker - Clean red line, no glow/shadow */
@@ -1468,26 +1528,28 @@ button.fcp-play-btn:hover {
 .fcp-timeline-empty-notice {
   padding: 16px 20px;
   border-radius: 8px;
-  border: 1px dashed var(--background-modifier-border);
+  border: 1px dashed var(--fcp-border-subtle);
   color: var(--text-muted);
   font-size: 0.85rem;
-  background: var(--background-secondary-alt);
+  background: var(--fcp-surface-pill);
 }
 
-/* Semi-Transparent Colored Window Frame */
+/* Semi-Transparent Colored Window Frame - Modern Rounded Glass Card */
 .fcp-timeline-window-frame {
   position: absolute;
   top: 0;
   height: 120px;
-  border-radius: 3px;
+  border-radius: 8px;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   overflow: visible;
   min-width: 48px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(4px);
 }
 
 .fcp-timeline-window-frame:hover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
 /* Frame Header Label (Title & Dates) */
@@ -1541,7 +1603,7 @@ button.fcp-play-btn:hover {
   cursor: pointer;
   transition: transform 0.15s ease;
   z-index: 6;
-  border-radius: 2px;
+  border-radius: 3px;
   box-shadow: none !important;
 }
 
@@ -1588,7 +1650,7 @@ button.fcp-play-btn:hover {
 }
 
 .fcp-timeline-task-dot.type-event {
-  background: #22c55e;
+  background: var(--fcp-event-border);
 }
 
 .fcp-timeline-task-dot:hover {
@@ -1611,12 +1673,12 @@ button.fcp-play-btn:hover {
   background: rgba(99, 102, 241, 0.28) !important;
 }
 
-/* Unassigned Milestones Lane */
+/* Unassigned Milestones Lane - Subtle Modern Baseline */
 .fcp-unassigned-lane {
   height: 52px;
   position: relative;
   margin-top: 8px;
-  border-top: 1px dashed var(--background-modifier-border);
+  border-top: 1px dashed var(--fcp-border-subtle);
 }
 
 .fcp-unassigned-label {
@@ -1964,8 +2026,8 @@ button.fcp-play-btn:hover {
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px;
-  background: var(--background-secondary-alt);
-  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--fcp-surface-subnav);
+  border-bottom: 1px solid var(--fcp-border-hairline);
   box-sizing: border-box;
   flex-shrink: 0;
   min-height: 40px;
@@ -1974,11 +2036,11 @@ button.fcp-play-btn:hover {
 .fcp-subnav-group {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: var(--background-secondary);
+  gap: 2px;
+  background: var(--fcp-surface-pill);
   padding: 2px 3px;
-  border-radius: 6px;
-  border: 1px solid var(--background-modifier-border);
+  border-radius: 9999px;
+  border: 1px solid var(--fcp-border-subtle);
 }
 
 .fcp-subnav-btn {
@@ -1987,29 +2049,29 @@ button.fcp-play-btn:hover {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: 9999px;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
 }
 
 .fcp-subnav-btn svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
 }
 
-.fcp-subnav-btn:hover {
+.fcp-subnav-btn:hover:not(.active) {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
 .fcp-subnav-btn.active {
-  background: var(--background-primary);
-  color: var(--interactive-accent);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .fcp-subnav-right {
@@ -2356,7 +2418,7 @@ button.fcp-play-btn:hover {
 
 .fcp-ms-subitem-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -2373,15 +2435,56 @@ button.fcp-play-btn:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.fcp-ms-subitem-bullet {
-  font-size: 0.85rem;
-  line-height: 1;
-  color: var(--text-muted);
-  user-select: none;
-  flex-shrink: 0;
-  width: 10px;
+/* Sub-Item Check / Bullet Button */
+.fcp-ms-subitem-check {
+  width: 14px;
+  height: 14px;
   display: inline-flex;
+  align-items: center;
   justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+  user-select: none;
+}
+
+.fcp-ms-subitem-check:hover {
+  transform: scale(1.2);
+}
+
+.fcp-ms-subitem-check.status-done {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.fcp-ms-subitem-check.status-done svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 3px;
+}
+
+.fcp-ms-subitem-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-sizing: border-box;
+  transition: background-color 0.12s ease, transform 0.12s ease;
+}
+
+.fcp-ms-subitem-check:hover .fcp-ms-subitem-dot {
+  background: var(--text-normal);
+  transform: scale(1.25);
+}
+
+.status-done .fcp-ms-subitem-text {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.status-skipped .fcp-ms-subitem-text {
+  opacity: 0.75;
 }
 
 .fcp-ms-subitem-text {

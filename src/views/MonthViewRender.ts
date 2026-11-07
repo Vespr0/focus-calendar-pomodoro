@@ -98,8 +98,13 @@ export class MonthViewRenderComponent {
     addSubBtn('milestones', 'milestone', 'Statistics & Milestones');
 
     const rightGroup = subNav.createDiv('fcp-subnav-right');
+    const currentYearMonth = `${this.currentYear}-${(this.currentMonth + 1).toString().padStart(2, '0')}`;
     let totalHours = 0;
-    for (const h of this.dailyHoursMap.values()) totalHours += h;
+    for (const [date, h] of this.dailyHoursMap.entries()) {
+      if (date.startsWith(currentYearMonth)) {
+        totalHours += h;
+      }
+    }
     if (totalHours > 0) {
       const metaEl = rightGroup.createSpan('fcp-subnav-meta');
       metaEl.textContent = formatHoursAndMinutes(totalHours);
@@ -199,7 +204,7 @@ export class MonthViewRenderComponent {
       const cellEl = monthGrid.createDiv(`fcp-month-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'is-today' : ''}`);
 
       const dailyHours = this.dailyHoursMap.get(cellIso) || 0;
-      if (dailyHours > 0) {
+      if (!isOtherMonth && dailyHours > 0) {
         const intensity = Math.min(1, dailyHours / 8);
         const alpha = 0.10 + (intensity * 0.40);
         cellEl.style.backgroundColor = `color-mix(in srgb, var(--interactive-accent) ${(alpha * 100).toFixed(0)}%, transparent)`;
@@ -241,7 +246,7 @@ export class MonthViewRenderComponent {
         });
       }
 
-      if (dailyHours > 0) {
+      if (!isOtherMonth && dailyHours > 0) {
         const hoursTag = cellEl.createDiv('fcp-month-day-hours');
         hoursTag.textContent = formatHoursAndMinutes(dailyHours);
       }

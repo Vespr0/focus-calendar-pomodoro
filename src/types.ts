@@ -67,6 +67,7 @@ export type MilestoneStatus = 'todo' | 'done' | 'skipped';
 export interface MilestoneSubItem {
   id: string;
   text: string;
+  status?: MilestoneStatus;
   createdAt: number;
 }
 

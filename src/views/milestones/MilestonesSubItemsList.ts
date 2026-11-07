@@ -1,5 +1,5 @@
-import { setIcon } from 'obsidian';
-import { MilestoneCategory, MilestoneItem, MilestoneSubItem } from '../../types';
+import { Menu, setIcon } from 'obsidian';
+import { MilestoneCategory, MilestoneItem, MilestoneSubItem, MilestoneStatus } from '../../types';
 import { enableInlineEdit } from '../common/InlineEdit';
 
 export interface MilestonesSubItemsCallbacks {
@@ -20,14 +20,98 @@ export class MilestonesSubItemsList {
     const subItemsContainer = container.createDiv('fcp-ms-subitems-container');
 
     subItems.forEach((subItem) => {
-      const row = subItemsContainer.createDiv('fcp-ms-subitem-row');
+      const status: MilestoneStatus = subItem.status || 'todo';
+      const row = subItemsContainer.createDiv(`fcp-ms-subitem-row status-${status}`);
+      row.dataset.id = subItem.id;
 
-      const bullet = row.createSpan('fcp-ms-subitem-bullet');
-      bullet.textContent = '•';
+      // Status check / bullet button
+      const checkBtn = row.createSpan(`fcp-ms-subitem-check status-${status}`);
+      if (status === 'done') {
+        setIcon(checkBtn, 'check');
+        checkBtn.title = 'Completed (click to toggle, right-click to skip)';
+      } else if (status === 'skipped') {
+        checkBtn.innerHTML = `<span class="fcp-ms-skipped-dot">🟣</span>`;
+        checkBtn.title = 'Skipped (Counts towards progress. Right-click to change)';
+      } else {
+        checkBtn.innerHTML = `<span class="fcp-ms-subitem-dot"></span>`;
+        checkBtn.title = 'To Do (click to complete, right-click to skip)';
+      }
+
+      // Left-click toggle
+      checkBtn.onclick = async (e) => {
+        e.stopPropagation();
+        subItem.status = status === 'done' ? 'todo' : 'done';
+        await callbacks.onSave();
+        callbacks.onRefresh();
+      };
+
+      // Right-click context menu
+      const openMenu = (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const menu = new Menu();
+
+        menu.addItem((i) =>
+          i
+            .setTitle('Mark as Done (✓)')
+            .setIcon('check')
+            .setChecked(status === 'done')
+            .onClick(async () => {
+              subItem.status = 'done';
+              await callbacks.onSave();
+              callbacks.onRefresh();
+            })
+        );
+
+        menu.addItem((i) =>
+          i
+            .setTitle('Mark as Skipped (🟣 Counts towards progress)')
+            .setIcon('circle-slash')
+            .setChecked(status === 'skipped')
+            .onClick(async () => {
+              subItem.status = 'skipped';
+              await callbacks.onSave();
+              callbacks.onRefresh();
+            })
+        );
+
+        menu.addItem((i) =>
+          i
+            .setTitle('Mark as To Do (•)')
+            .setIcon('circle')
+            .setChecked(status === 'todo')
+            .onClick(async () => {
+              subItem.status = 'todo';
+              await callbacks.onSave();
+              callbacks.onRefresh();
+            })
+        );
+
+        menu.addSeparator();
+
+        menu.addItem((i) =>
+          i
+            .setTitle('Delete List Item')
+            .setIcon('trash-2')
+            .onClick(async () => {
+              const updated = (item.subItems || item.comments || []).filter((s) => s.id !== subItem.id);
+              item.subItems = updated;
+              item.comments = updated;
+              await callbacks.onSave();
+              callbacks.onRefresh();
+            })
+        );
+
+        menu.showAtMouseEvent(e);
+      };
+
+      row.oncontextmenu = openMenu;
+      checkBtn.oncontextmenu = openMenu;
 
       const textEl = row.createSpan('fcp-ms-subitem-text');
       textEl.textContent = subItem.text;
-      textEl.title = 'Click to edit';
+      textEl.title = 'Click to edit (Right-click for options)';
 
       textEl.onclick = (e) => {
         e.stopPropagation();
@@ -63,6 +147,7 @@ export class MilestonesSubItemsList {
     const newSub: MilestoneSubItem = {
       id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       text: 'New item',
+      status: 'todo',
       createdAt: Date.now()
     };
     item.subItems.push(newSub);
@@ -80,4 +165,3 @@ export class MilestonesSubItemsList {
     });
   }
 }
-

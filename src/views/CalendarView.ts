@@ -127,7 +127,11 @@ export class FocusCalendarView extends ItemView {
         const step = this.isMobileWeekView() ? 3 : 7;
         this.currentDate.setDate(this.currentDate.getDate() - step);
       } else if (this.viewMode === 'month') {
+        const targetDay = this.currentDate.getDate();
+        this.currentDate.setDate(1);
         this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+        const daysInNewMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0).getDate();
+        this.currentDate.setDate(Math.min(targetDay, daysInNewMonth));
       }
       await this.refreshData();
       this.renderView();
@@ -140,7 +144,11 @@ export class FocusCalendarView extends ItemView {
         const step = this.isMobileWeekView() ? 3 : 7;
         this.currentDate.setDate(this.currentDate.getDate() + step);
       } else if (this.viewMode === 'month') {
+        const targetDay = this.currentDate.getDate();
+        this.currentDate.setDate(1);
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+        const daysInNewMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0).getDate();
+        this.currentDate.setDate(Math.min(targetDay, daysInNewMonth));
       }
       await this.refreshData();
       this.renderView();
